@@ -87,6 +87,10 @@ button:disabled{opacity:.5;cursor:default}
 홍대3번=홍3
 합정역8번=합8</textarea>
     </label>
+    <label>자주 쓰는 장소 (한 줄에 하나 · 장소를 고치면 자동으로 추가됩니다)
+      <textarea id="places" rows="4" placeholder="예: 알로프트명동"></textarea>
+    </label>
+    <p class="note">글자 인식이 장소를 비슷하게 잘못 읽으면(예: 알로프트명등), 이 목록과 기본 장소 목록에서 가장 가까운 이름으로 자동으로 고칩니다.</p>
     <p class="note">가이드 이름 목록에 있는 이름만 가이드로 알아봅니다. 새 가이드가 생기면 목록에 추가하세요. "OO역 N번 / OO N번" 형태 장소는 목록에 없어도 첫 글자+번호로 줄입니다.</p>
   </section>
 
@@ -272,8 +276,8 @@ if(typeof module!=='undefined')module.exports={analyzeTable,pickPhone,cleanPlace
 const $=id=>document.getElementById(id);
 let images=[], allRows=[], rows=[], picked=new Set(), fixes={}, worker=null;
 const KEY='pickupOcrCfg';
-try{const s=JSON.parse(localStorage.getItem(KEY)||'{}');['guides','exclude','abbr'].forEach(k=>{if(s[k]!=null)$(k).value=s[k];});(s.picked||[]).forEach(g=>picked.add(g));fixes=s.fixes||{};}catch(e){}
-function saveCfg(){try{localStorage.setItem(KEY,JSON.stringify({guides:$('guides').value,exclude:$('exclude').value,abbr:$('abbr').value,picked:[...picked],fixes}));}catch(e){}}
+try{const s=JSON.parse(localStorage.getItem(KEY)||'{}');['guides','exclude','abbr','places'].forEach(k=>{if(s[k]!=null)$(k).value=s[k];});(s.picked||[]).forEach(g=>picked.add(g));fixes=s.fixes||{};}catch(e){}
+function saveCfg(){try{localStorage.setItem(KEY,JSON.stringify({guides:$('guides').value,exclude:$('exclude').value,abbr:$('abbr').value,places:$('places').value,picked:[...picked],fixes}));}catch(e){}}
 (()=>{const d=new Date(Date.now()+864e5);$('date').value=String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');})();
 const list=v=>v.split(',').map(s=>s.trim()).filter(Boolean);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -345,7 +349,7 @@ $('run').onclick=async()=>{
       const img=await loadImg(images[k]);const pp=prep(img);
       const res=await analyzeTable({gray:pp.gray,bin:pp.bin,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:list($('guides').value),
         onStep:t=>{setStatus(`사진 ${k+1}/${images.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/images.length);}});
-      res.rows.forEach(r=>{const cx=res.cols;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];r.on=true;allRows.push(r);});
+      res.rows.forEach(r=>{const cx=res.cols;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
     }
     setBar(1);
     const found=new Set(usable().map(r=>r.guide||'(모름)'));
@@ -368,6 +372,28 @@ function drawChips(){
 }
 function applyFilter(){rows=usable().filter(r=>picked.has(r.guide||'(모름)'));drawChips();render();}
 function abbrMap(){const m=[];$('abbr').value.split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)m.push([l.slice(0,i).trim(),l.slice(i+1).trim()]);});return m;}
+const BASE_PLACES=['머큐어 용산','레스케이프','코트야드남대문','시청역6번(보문동)','나인트리 인사동','미드시티명동','골든서울호텔','GLAD Mapo Hotel','명동9번(솔라리아 니시테츠)','명동9번(이비스스타일 명동)','명동9번(솔라리아 명동)','명동5번(퍼시픽호텔)','알로프트명동','이비스명동','조계사','롯데시티마포','홍대3번','합정역8번','명동역9번','시청역6번','엠제이스테이(우정국로2길34)','콘래드서울호텔','글래드코엑스'];
+function placeList(){const extra=$('places').value.split('\n').map(x=>x.trim()).filter(Boolean);return [...new Set([...extra,...BASE_PLACES])];}
+function jamo(t){let o='';for(const ch of String(t).replace(/\s+/g,'')){const c=ch.charCodeAt(0)-0xAC00;if(c>=0&&c<11172){o+=String.fromCharCode(0x1100+Math.floor(c/588),0x1161+Math.floor(c%588/28));if(c%28)o+=String.fromCharCode(0x11A7+c%28);}else o+=ch.toLowerCase();}return o;}
+function levD(a,b){const m=a.length,n=b.length;let p=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const q=[i];for(let j=1;j<=n;j++)q[j]=Math.min(p[j]+1,q[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=q;}return p[n];}
+function matchPlace(raw){
+  const r=String(raw||'').trim();if(!r||!/[가-힣A-Za-z]/.test(r))return null;
+  const rd=(r.match(/\d+/g)||[]).join(','),rj=jamo(r);let best=null,second=Infinity;
+  for(const c of placeList()){
+    const cd=(c.match(/\d+/g)||[]).join(',');if(rd&&cd&&rd!==cd)continue;if(!!rd!==!!cd&&/번/.test(r+c))continue;
+    const d=levD(rj,jamo(c))/Math.max(rj.length,jamo(c).length);
+    if(!best||d<best.d){if(best)second=best.d;best={c,d};}else if(d<second)second=d;
+  }
+  if(best&&best.d===0)return null;
+  if(best&&best.d<=0.3&&second-best.d>=0.08)return best.c;
+  // 두 줄 칸: 괄호 안 이름만으로 다시 비교
+  const inner=t=>{const m=String(t).match(/\(([^)]*)\)?\s*$/);return m?jamo(m[1].replace(/[^가-힣]/g,'')):'';};
+  const ri=inner(r);if(ri.length<6)return null;let b2=null,s2=Infinity;
+  for(const c of placeList()){const ci=inner(c);if(!ci)continue;const d=Math.min(levD(ri,ci)/Math.max(ri.length,ci.length),levD(ri,ci.slice(0,ri.length))/ri.length);
+    if(!b2||d<b2.d){if(b2)s2=b2.d;b2={c,d};}else if(d<s2)s2=d;}
+  return (b2&&b2.d<=0.35&&s2-b2.d>=0.1)?b2.c:null;
+}
+function learnPlace(v){v=String(v||'').trim();if(!v)return;const cur=$('places').value.split('\n').map(x=>x.trim()).filter(Boolean);if(cur.includes(v)||BASE_PLACES.includes(v))return;cur.push(v);$('places').value=cur.join('\n');saveCfg();}
 function shortPlace(p){
   p=String(p||'').replace(/\s+/g,' ').trim();const flat=p.replace(/\(.*?\)/g,'').replace(/\s/g,'');
   for(const [a,b] of abbrMap()){const fa=a.replace(/\s/g,'');if(flat===fa||flat.startsWith(fa))return b;}
@@ -386,7 +412,7 @@ function render(){
       <div class="fields">
         <label class="f-on"><span>포함</span><input type="checkbox" id="on${i}" ${r.on?'checked':''}></label>
         <label class="f-g">가이드${r.guideGuess?' <span class="flag">추정</span>':''}<select id="g${i}">${[...new Set([r.guide,...gl])].filter(Boolean).map(g=>`<option ${g===r.guide?'selected':''}>${esc(g)}</option>`).join('')}<option value="" ${r.guide?'':'selected'}>(모름)</option></select></label>
-        <label class="f-pl">장소 <span class="hint" id="sp${i}">→ ${esc(shortPlace(r.place))}</span><input id="pl${i}" value="${esc(r.place)}"></label>
+        <label class="f-pl">장소${r.auto?' <span class="hint">(자동 보정)</span>':''} <span class="hint" id="sp${i}">→ ${esc(shortPlace(r.place))}</span><input id="pl${i}" value="${esc(r.place)}"></label>
         <label class="f-nm">고객명<input id="nm${i}" value="${esc(r.name)}"></label>
         <label class="ph f-ph">연락처 ${r.phoneSure?'':'<span class="flag">확인 필요</span>'}<input id="ph${i}" value="${esc(r.phone)}" inputmode="numeric"></label>
       </div>`;
@@ -394,6 +420,7 @@ function render(){
     c.querySelector('#on'+i).onchange=e=>{r.on=e.target.checked;c.classList.toggle('off',!r.on);makeOut();};
     c.querySelector('#g'+i).onchange=e=>{r.guide=e.target.value;r.guideGuess=false;drawChips();makeOut();};
     c.querySelector('#pl'+i).oninput=e=>{r.place=e.target.value;$('sp'+i).textContent='→ '+shortPlace(r.place);if(r.raw)fixes[r.raw]=r.place;saveCfg();makeOut();};
+    c.querySelector('#pl'+i).onchange=e=>learnPlace(e.target.value);
     c.querySelector('#nm'+i).oninput=e=>{r.name=e.target.value;makeOut();};
     c.querySelector('#ph'+i).oninput=e=>{r.phone=digits(e.target.value);r.phoneSure=true;c.classList.remove('check');makeOut();};
   });
