@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e07b00">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>픽업표 주소록 변환기</title>
+<script src="lib/tesseract.min.js"></script>
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#d5ddd9;
+  --accent:#e07b00; --accent-ink:#ffffff; --warn:#b3261e; --warnbg:#fde8e6; --chip:#fff1de;
+  --sans:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  --mono:Consolas,"D2Coding",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121715; --surface:#1b2220; --fg:#e6ece9; --muted:#9aa8a2; --line:#2e3834;
+  --accent:#f0962a; --accent-ink:#1a1206; --warn:#ff8a80; --warnbg:#3a1a18; --chip:#3a2a14; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 48px;display:grid;gap:16px}
+h1{font-size:1.4rem;margin:0}
+.sub{color:var(--muted);margin:2px 0 0;font-size:.92rem}
+section{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px;min-width:0}
+h2{font-size:.8rem;letter-spacing:.06em;color:var(--muted);margin:0;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+input,textarea,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
+input[type=checkbox]{width:auto}
+textarea{font-family:var(--mono);font-size:.85rem;resize:vertical}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--chip)}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumbs figure{margin:0;position:relative}
+.thumbs img{height:64px;border-radius:4px;border:1px solid var(--line)}
+.thumbs button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;padding:0;border-radius:50%;font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.5;cursor:default}
+.status{font-size:.88rem;color:var(--muted)}
+.status.err{color:var(--warn)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border-radius:99px;padding:6px 14px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip small{opacity:.75;margin-left:4px}
+.cards{display:grid;gap:10px}
+.card{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:8px;background:var(--bg)}
+.card.off{opacity:.45}
+.strip{overflow-x:auto;border-radius:4px;border:1px solid var(--line);background:#fff}
+.strip img{display:block;width:100%;height:auto;cursor:zoom-in}.strip.zoom img{width:220%;cursor:zoom-out}
+.fields{display:grid;grid-template-columns:auto 110px minmax(120px,1fr) minmax(140px,1.2fr) minmax(150px,1fr);gap:8px;align-items:start}
+@media (max-width:700px){.fields{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.fields{grid-template-columns:auto 1fr!important;column-gap:12px}.f-pl,.f-nm,.f-ph{grid-column:1/-1}.f-on{align-content:start}body{font-size:16px}.wrap{padding:14px 12px 40px;gap:12px}section{padding:14px}h1{font-size:1.25rem}.fields{grid-template-columns:1fr}input,textarea,select{font-size:16px;padding:10px}button{padding:12px 16px;font-size:16px}.row button{flex:1}.drop{padding:28px 12px;font-size:1rem}.chip{padding:8px 14px}}
+.fields .ph input{font-family:var(--mono)}
+.hint{font-size:.78rem;color:var(--muted)}
+.flag{font-size:.78rem;color:var(--warn);font-weight:700}
+.card.check{border-color:var(--warn);background:var(--warnbg)}
+.note{font-size:.82rem;color:var(--muted);margin:0}
+.pill{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:99px;background:var(--chip);color:var(--fg)}
+.m-only{display:none}@media (pointer:coarse){.m-only{display:inline}.pc-only{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>픽업표 주소록 변환기</h1>
+    <p class="sub">배정표 사진을 넣으면 내 가이드 손님의 이름·번호를 주소록에 넣을 수 있게 정리해 줍니다.</p>
+  </header>
+
+  <section>
+    <h2>설정</h2>
+    <div class="grid">
+      <label>날짜 코드 (YYMMDD)<input id="date" inputmode="numeric" maxlength="6"></label>
+      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="정지은, 김보경, 윤희진, 이미영"></label>
+      <label>제외할 가이드 (쉼표 구분)<input id="exclude" value="이미영"></label>
+    </div>
+    <label>장소 줄임말 (한 줄에 하나, 원래이름=줄임말)
+      <textarea id="abbr" rows="4">명동역9번=명9
+시청역6번=시6
+홍대3번=홍3
+합정역8번=합8</textarea>
+    </label>
+    <p class="note">가이드 이름 목록에 있는 이름만 가이드로 알아봅니다. 새 가이드가 생기면 목록에 추가하세요. "OO역 N번 / OO N번" 형태 장소는 목록에 없어도 첫 글자+번호로 줄입니다.</p>
+  </section>
+
+  <section>
+    <h2>사진</h2>
+    <div class="drop" id="drop" tabindex="0"><span class="pc-only">사진을 여기로 끌어오거나, 눌러서 고르거나, Ctrl+V로 붙여넣기 (여러 장 가능)</span><span class="m-only">여기를 눌러 사진 고르기 (여러 장 가능)</span></div>
+    <input type="file" id="file" accept="image/*" multiple hidden>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="row">
+      <button class="primary" id="run" disabled>추출하기</button>
+      <span class="status" id="status">처음 한 번은 준비하느라 1분쯤 걸립니다. 와이파이에서 처음 열어 두면 좋습니다.</span>
+    </div>
+    <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+  </section>
+
+  <section>
+    <h2>가이드 선택</h2>
+    <div class="chips" id="chips"><span class="note">추출하면 사진에 있는 가이드가 여기에 나옵니다. 여러 명 고를 수 있습니다.</span></div>
+  </section>
+
+  <section>
+    <h2>검토 <span class="pill" id="count">0건</span></h2>
+    <p class="note"><b>사진 띠와 번호를 꼭 한 줄씩 대조하세요.</b> 글자 인식이라 숫자가 틀릴 수 있습니다. 빨간 칸은 인식이 불확실한 번호입니다. 장소를 고치면 다음부터 같은 인식 결과는 자동으로 고쳐집니다.</p>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section>
+    <h2>결과</h2>
+    <textarea id="out" rows="10" spellcheck="false" placeholder="+491702256782, #261015머큐어 용산 Manfred Grimmeisen"></textarea>
+    <div class="row">
+      <button class="primary" id="copy">복사</button>
+      <button id="save">txt로 저장</button>
+      <span class="status" id="outStatus"></span>
+    </div>
+  </section>
+</div>
+
+<script>
+// 표 사진 분석 핵심 로직 (브라우저/노드 공용)
+// rec(img, rect|null, params) -> Promise<{text, words:[{text,confidence,bbox}]}>
+async function analyzeTable({gray, bin, W, H, rec, guides, onStep, vlines}){
+  const VL=(vlines||[]).slice().sort((a,b)=>a-b);
+  const cellOf=x=>{let a=null,b=null;for(const v of VL){if(v<=x)a=v;else{b=v;break;}}return (a!=null&&b!=null&&b-a>W*0.015)?[a,b]:null;};
+  const step=s=>onStep&&onStep(s);
+  const P11={tessedit_pageseg_mode:'11',tessedit_char_whitelist:'',preserve_interword_spaces:'1'};
+  step('전체 글자 읽는 중 (1/3)');
+  const w1=(await rec(gray,null,P11)).words.map(norm);
+  step('전체 글자 읽는 중 (2/3)');
+  const w2=(await rec(bin,null,P11)).words.map(norm);
+  const all=[...w1,...w2];
+
+  // 1) 고객 이름 줄(라틴 문자) 찾기
+  const isLatin=t=>/^[A-Za-zÀ-ž().'’-]{2,}$/.test(t)&&/[A-Za-z]{2}/.test(t);
+  const runs=[];
+  for(const src of [w1,w2]){
+    const lat=src.filter(w=>isLatin(w.t)&&w.c>20).sort((a,b)=>a.yc-b.yc||a.x0-b.x0);
+    for(const w of lat){
+      const r=runs.find(r=>r.src===src&&Math.abs(r.yc-w.yc)<w.h*0.6&&w.x0-r.x1<w.h*2.5&&w.x0>r.x0);
+      if(r){r.ws.push(w);r.x1=Math.max(r.x1,w.x1);}else runs.push({src,ws:[w],x0:w.x0,x1:w.x1,yc:w.yc,h:w.h});
+    }
+  }
+  runs.forEach(r=>{r.text=r.ws.map(w=>w.t).join(' ');r.xc=(r.x0+r.x1)/2;r.conf=r.ws.reduce((a,w)=>a+w.c,0)/r.ws.length;});
+  // 이름 열 = 2단어 이상 라틴 묶음이 가장 많이 모인 x 위치
+  const multi=runs.filter(r=>r.ws.length>=2);
+  const bins={};multi.forEach(r=>{const k=Math.round(r.x0/(W*0.04));bins[k]=(bins[k]||0)+1;});
+  const kBest=+Object.keys(bins).sort((a,b)=>bins[b]-bins[a])[0];
+  const nameX0=(kBest||0)*W*0.04;
+  let nameRuns=runs.filter(r=>Math.abs(r.x0-nameX0)<W*0.07&&!/hotel/i.test(r.text));
+  let nameL=Math.min(...nameRuns.map(r=>r.x0)), nameR=pct(nameRuns.map(r=>r.x1),0.9);
+  const nameCell=cellOf(median(nameRuns.map(r=>r.xc)));
+  if(nameCell){nameL=nameCell[0]+3;nameR=nameCell[1]-3;
+    const nr2=runs.filter(r=>r.xc>nameL&&r.xc<nameR&&!/hotel/i.test(r.text));if(nr2.length)nameRuns=nr2;}
+
+  // 2) 연락처 열: 이름 열 오른쪽의 숫자 덩어리
+  const digitW=all.filter(w=>/\d{2,}/.test(w.t)&&!/[:가-힣]/.test(w.t)&&w.x0>nameR);
+  const big=digitW.filter(w=>/\d{3,}/.test(w.t));
+  const bx=median(big.map(w=>w.x0));
+  const core=big.filter(w=>Math.abs(w.x0-bx)<W*0.08);
+  let phL=Math.min(...core.map(w=>w.x0))-W*0.012, phR=pct(core.map(w=>w.x1),0.95)+W*0.012;
+  const phCell=cellOf(median(core.map(w=>(w.x0+w.x1)/2)));
+  if(phCell){phL=phCell[0]+3;phR=phCell[1]-3;}
+  const phoneRuns=[];
+  digitW.filter(w=>w.x0>=phL&&w.x1<=phR+W*0.01).forEach(w=>{const r=phoneRuns.find(r=>Math.abs(r.yc-w.yc)<w.h*0.6);if(r)r.n++;else phoneRuns.push({yc:w.yc,n:1,h:w.h});});
+
+  // 3) 행 기준점 = 이름 줄 ∪ 번호 줄
+  let anchors=[];
+  const best=(a,b)=>(a.ws.length-b.ws.length||a.conf-b.conf)>=0?a:b;
+  nameRuns.sort((a,b)=>a.yc-b.yc).forEach(r=>{const a=anchors.find(a=>Math.abs(a.yc-r.yc)<r.h*0.8);if(a){a.name=a.name?best(a.name,r):r;}else anchors.push({yc:r.yc,h:r.h,name:r});});
+  phoneRuns.forEach(p=>{if(!anchors.some(a=>Math.abs(a.yc-p.yc)<p.h*2.2))anchors.push({yc:p.yc,h:p.h,name:null});});
+  anchors.sort((a,b)=>a.yc-b.yc);
+  const lineH=median(all.map(w=>w.h))||20;
+  anchors.forEach((a,i)=>{
+    const prev=anchors[i-1],next=anchors[i+1];
+    a.y0=Math.max(0,prev?(prev.yc+a.yc)/2:a.yc-lineH*2.5);
+    a.y1=Math.min(H,next?(next.yc+a.yc)/2:a.yc+lineH*2.5);
+    a.y0=Math.max(a.y0,a.yc-lineH*4);a.y1=Math.min(a.y1,a.yc+lineH*4);
+  });
+
+  // 4) 시간 열 → 장소 열 범위
+  const timeW=all.filter(w=>/\d{1,2}[:;.]\d{2}/.test(w.t)&&w.x1<nameL);
+  let placeL=timeW.length?pct(timeW.map(w=>w.x1),0.5)+W*0.005:Math.max(0,nameL-W*0.18);
+  let placeR=nameL-W*0.003;
+  const plCell=nameCell&&cellOf(nameCell[0]-4);
+  if(plCell){placeL=plCell[0]+3;placeR=plCell[1]-3;}
+
+  // 5) 가이드 이름 위치
+  const guideHits=findGuides(all.filter(w=>w.x0>phR),guides);
+
+  const rows=[];
+  for(let i=0;i<anchors.length;i++){
+    const a=anchors[i];
+    step(`행 정리 중 ${i+1}/${anchors.length}`);
+    const band={left:0,top:Math.round(a.y0),width:W,height:Math.round(a.y1-a.y0)};
+    // 연락처: 숫자만 다시 읽기
+    const pr=await rec(gray,{left:Math.round(phL),top:band.top,width:Math.round(phR-phL),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'0123456789-#+ ',preserve_interword_spaces:'1'});
+    const phone=pickPhone(pr.text);
+    const dw=(pr.words||[]).filter(w=>/\d/.test(w.text)&&!/^#/.test(w.text));
+    const minConf=dw.length?Math.min(...dw.map(w=>w.confidence)):0;
+    const nanpBad=/^1/.test(phone)&&phone.length!==11;
+    // 이름
+    let name=a.name?a.name.text:'';
+    const nm=nameCell?0:W*0.015;const nrect={left:Math.round(nameL-nm),top:band.top,width:Math.round(nameR-nameL+2*nm),height:band.height};
+    const NP={tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'};
+    const scoreName=r=>{const t=cleanName(r.text);const ws=(r.words||[]).filter(w=>/[A-Za-z]{2}/.test(w.text));const c=ws.length?ws.reduce((a,w)=>a+w.confidence,0)/ws.length:0;return {t,c:c+Math.min(t.replace(/[^A-Za-z]/g,'').length,20)};};
+    const c1=scoreName(await rec(gray,nrect,NP)), c2=scoreName(await rec(bin,nrect,NP));
+    const best2=c1.c>=c2.c?c1:c2;
+    const rn=best2.t, lw=x=>x.toLowerCase().split(' ').filter(Boolean);
+    if(rn.replace(/[^A-Za-z]/g,'').length>=2)name=rn;
+    name=name.replace(/^\(\)?\s*/,'');
+    // 장소
+    const plr=await rec(gray,{left:Math.round(placeL),top:band.top,width:Math.round(placeR-placeL),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});
+    const place=cleanPlace(plr.text);
+    // 가이드
+    let g=guideHits.filter(h=>h.yc>=a.y0&&h.yc<a.y1), guess=false;
+    if(!g.length&&guideHits.length){const n=guideHits.slice().sort((x,y)=>Math.abs(x.yc-a.yc)-Math.abs(y.yc-a.yc))[0];if(Math.abs(n.yc-a.yc)<lineH*6){g=[n];guess=true;}}
+    rows.push({name,phone,phoneConf:Math.round(minConf),phoneSure:!!phone&&minConf>=85&&!nanpBad,place,guide:g.length?g[0].name:'',guideGuess:guess,y0:a.y0,y1:a.y1});
+  }
+  return {rows,cols:{nameL,nameR,phL,phR,placeL,placeR}};
+}
+function norm(w){const b=w.bbox;return {t:(w.text||'').trim(),c:w.confidence,x0:b.x0,x1:b.x1,y0:b.y0,y1:b.y1,yc:(b.y0+b.y1)/2,h:b.y1-b.y0};}
+function pct(a,p){if(!a.length)return 0;const s=a.slice().sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))];}
+function median(a){return pct(a,0.5);}
+function pickPhone(text){
+  const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const cand=lines.filter(l=>!/^#/.test(l)).map(l=>l.replace(/#\s*\d+/g,'').replace(/[^\d]/g,'')).filter(d=>d.length>=8);
+  if(cand.length)return cand.sort((a,b)=>b.length-a.length)[0].slice(0,15);
+  const d=lines.join(' ').replace(/#\s*\d+/g,'').replace(/\D/g,'');return d.length>=8?d.slice(0,15):'';
+}
+function cleanName(t){
+  const ls=String(t||'').split('\n').map(l=>l.replace(/[^A-Za-zÀ-ž().'’ -]/g,' ').replace(/\s+/g,' ').trim()).filter(l=>/[A-Za-z]{2}/.test(l));
+  ls.sort((a,b)=>b.replace(/[^A-Za-z]/g,'').length-a.replace(/[^A-Za-z]/g,'').length);
+  return (ls[0]||'').split(' ').filter(x=>(/[A-Za-z]{2}/.test(x)||/^[A-Z]$/.test(x))&&!/^[a-z]{1,3}\)$/.test(x)).join(' ').replace(/^(?:[A-Z]{2,3}|[a-z]{1,3})\s+(?=\(\)|[A-Z][a-z])/,'').trim();
+}
+function cleanPlace(t){
+  return String(t||'').split('\n').map(l=>l.replace(/[|_~=—]+/g,' ').replace(/\s+/g,' ').trim()).filter(l=>l.length>0).join('')
+    .replace(/\s*\(\s*/g,'(').replace(/\s*[)}\]]/g,')').replace(/[{\[]/g,'(')
+    .replace(/^[\d\s:;.,>~\-"'`]+/,'').replace(/등(?=\d|번|\)|$|\()/g,'동').trim();
+}
+function lev(a,b){const m=a.length,n=b.length,d=[...Array(m+1)].map((_,i)=>[i,...Array(n).fill(0)]);for(let j=1;j<=n;j++)d[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n];}
+function findGuides(ws,guides){
+  // 같은 줄의 한글 조각을 이어 붙여 가이드 이름과 비교
+  const lines=[];
+  ws.filter(w=>/[가-힣]/.test(w.t)).sort((a,b)=>a.yc-b.yc||a.x0-b.x0).forEach(w=>{
+    const L=lines.find(l=>Math.abs(l.yc-w.yc)<w.h*0.6);if(L){L.ws.push(w);}else lines.push({yc:w.yc,ws:[w]});});
+  const hits=[];
+  for(const L of lines){
+    L.ws.sort((a,b)=>a.x0-b.x0);
+    for(let i=0;i<L.ws.length;i++){let s='';
+      for(let j=i;j<Math.min(L.ws.length,i+4);j++){
+        if(j>i&&L.ws[j].x0-L.ws[j-1].x1>L.ws[j].h*1.5)break;
+        s+=L.ws[j].t.replace(/[^가-힣]/g,'');
+        for(const g of guides){if(s.length>=g.length-1&&s.length<=g.length+1&&lev(s,g)<=(g.length>=3?1:0))hits.push({name:g,yc:L.yc,x0:L.ws[i].x0});}
+      }}
+  }
+  const out=[];hits.forEach(h=>{if(!out.some(o=>o.name===h.name&&Math.abs(o.yc-h.yc)<10))out.push(h);});
+  return out;
+}
+if(typeof module!=='undefined')module.exports={analyzeTable,pickPhone,cleanPlace,findGuides};
+
+</script>
+<script>
+const $=id=>document.getElementById(id);
+let images=[], allRows=[], rows=[], picked=new Set(), fixes={}, worker=null;
+const KEY='pickupOcrCfg';
+try{const s=JSON.parse(localStorage.getItem(KEY)||'{}');['guides','exclude','abbr'].forEach(k=>{if(s[k]!=null)$(k).value=s[k];});(s.picked||[]).forEach(g=>picked.add(g));fixes=s.fixes||{};}catch(e){}
+function saveCfg(){try{localStorage.setItem(KEY,JSON.stringify({guides:$('guides').value,exclude:$('exclude').value,abbr:$('abbr').value,picked:[...picked],fixes}));}catch(e){}}
+(()=>{const d=new Date(Date.now()+864e5);$('date').value=String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');})();
+const list=v=>v.split(',').map(s=>s.trim()).filter(Boolean);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- 사진 받기 ---------- */
+function addFiles(fs){for(const f of fs)if(f&&f.type.startsWith('image/'))images.push(f);drawThumbs();}
+function drawThumbs(){const t=$('thumbs');t.innerHTML='';images.forEach((f,i)=>{const fig=document.createElement('figure'),img=document.createElement('img'),b=document.createElement('button');img.src=URL.createObjectURL(f);b.textContent='×';b.title='빼기';b.onclick=()=>{images.splice(i,1);drawThumbs();};fig.append(img,b);t.append(fig);});$('run').disabled=!images.length;}
+const drop=$('drop');
+drop.onclick=()=>$('file').click();
+drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')$('file').click();};
+$('file').onchange=e=>{addFiles(e.target.files);e.target.value='';};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files);};
+document.addEventListener('paste',e=>{const fs=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile());if(fs.length)addFiles(fs);});
+
+/* ---------- 이미지 전처리 ---------- */
+function loadImg(f){return new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(f);});}
+function prep(img){
+  const s=Math.max(1,Math.min(3,2900/img.width)), W=Math.round(img.width*s), H=Math.round(img.height*s);
+  const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.imageSmoothingQuality='high';x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(img,0,0,W,H);
+  const d=x.getImageData(0,0,W,H),p=d.data,L=new Uint8ClampedArray(W*H),hist=new Array(256).fill(0);
+  for(let i=0,j=0;i<p.length;i+=4,j++){const v=Math.round(.299*p[i]+.587*p[i+1]+.114*p[i+2]);L[j]=v;hist[v]++;}
+  let lo=0,hi=255,acc=0,cut=W*H*.01;for(lo=0;lo<255;lo++){acc+=hist[lo];if(acc>cut)break;}acc=0;for(hi=255;hi>0;hi--){acc+=hist[hi];if(acc>cut)break;}
+  const g=document.createElement('canvas');g.width=W;g.height=H;const gx=g.getContext('2d'),gd=gx.createImageData(W,H);
+  const b=document.createElement('canvas');b.width=W;b.height=H;const bx=b.getContext('2d'),bd=bx.createImageData(W,H);
+  for(let j=0,i=0;j<L.length;j++,i+=4){const v=Math.max(0,Math.min(255,Math.round((L[j]-lo)*255/Math.max(1,hi-lo))));gd.data[i]=gd.data[i+1]=gd.data[i+2]=v;gd.data[i+3]=255;
+    const t=L[j]<135?0:255;bd.data[i]=bd.data[i+1]=bd.data[i+2]=t;bd.data[i+3]=255;}
+  gx.putImageData(gd,0,0);bx.putImageData(bd,0,0);
+  // 엑셀 세로 칸선 찾기
+  const k=4,cnt=new Uint32Array(W);
+  for(let y=0;y<H;y++){const o=y*W;for(let xx=k;xx<W-k;xx++){const v=L[o+xx];if(v<L[o+xx-k]-8&&v<L[o+xx+k]-8)cnt[xx]++;}}
+  const vlines=[];let grp=[];
+  for(let xx=0;xx<W;xx++){if(cnt[xx]>H*0.4){if(grp.length&&xx-grp[grp.length-1]>8){vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);grp=[];}grp.push(xx);}}
+  if(grp.length)vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);
+  return {gray:g,bin:b,W,H,s,vlines};
+}
+function padCrop(src,r){
+  const P=16,c=document.createElement('canvas');c.width=r.width+2*P;c.height=r.height+2*P;const x=c.getContext('2d');
+  const e=src.getContext('2d').getImageData(r.left+1,r.top+Math.floor(r.height/2),1,1).data;
+  x.fillStyle=`rgb(${e[0]},${e[1]},${e[2]})`;x.fillRect(0,0,c.width,c.height);
+  x.drawImage(src,r.left,r.top,r.width,r.height,P,P,r.width,r.height);return c;
+}
+function strip(img,s,y0,y1,x0,x1){
+  const top=Math.max(0,Math.floor(y0/s)),h=Math.max(8,Math.ceil((y1-y0)/s));
+  const left=Math.max(0,Math.floor((x0||0)/s)),wd=Math.min(img.width-left,Math.ceil(((x1||img.width*s)-(x0||0))/s));
+  const c=document.createElement('canvas');c.width=wd;c.height=Math.min(h,img.height-top);
+  c.getContext('2d').drawImage(img,left,top,wd,c.height,0,0,wd,c.height);return c.toDataURL('image/png');
+}
+
+/* ---------- 추출 ---------- */
+async function getWorker(){
+  if(worker)return worker;
+  if(typeof Tesseract==='undefined')throw new Error('글자 인식 도구를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요.');
+  setStatus('글자 인식 데이터 준비 중… (처음 한 번만)');
+  const base=new URL('.',location.href).href;
+  worker=await Tesseract.createWorker(['kor','eng'],1,{workerPath:base+'lib/worker.min.js',corePath:base+'lib/core/',langPath:base+'lang',gzip:true,workerBlobURL:false,logger:m=>{if(m.status&&/loading|initializ/.test(m.status))setBar(m.progress);}});
+  return worker;
+}
+function setStatus(t,err){const s=$('status');s.textContent=t;s.className='status'+(err?' err':'');}
+function setBar(p){$('bar').hidden=false;$('barFill').style.width=Math.round((p||0)*100)+'%';}
+$('run').onclick=async()=>{
+  $('run').disabled=true;
+  try{
+    const w=await getWorker();
+    const rec=async(img,rect,params)=>{await w.setParameters(params);const {data}=await w.recognize(rect?padCrop(img,rect):img);return {text:data.text,words:data.words||[]};};
+    allRows=[];
+    for(let k=0;k<images.length;k++){
+      const img=await loadImg(images[k]);const pp=prep(img);
+      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:list($('guides').value),
+        onStep:t=>{setStatus(`사진 ${k+1}/${images.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/images.length);}});
+      res.rows.forEach(r=>{const cx=res.cols;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];r.on=true;allRows.push(r);});
+    }
+    setBar(1);
+    const found=new Set(usable().map(r=>r.guide||'(모름)'));
+    if(![...picked].some(g=>found.has(g)))found.forEach(g=>picked.add(g));
+    applyFilter();
+    setStatus(`${allRows.length}행 읽음 · 가이드 ${found.size}명. 아래에서 꼭 대조하세요.`);
+  }catch(e){setStatus('실패: '+(e.message||e),true);}
+  finally{$('run').disabled=!images.length;}
+};
+
+/* ---------- 선택/검토 ---------- */
+function usable(){const ex=list($('exclude').value);return allRows.filter(r=>!ex.includes(r.guide));}
+function drawChips(){
+  const box=$('chips');box.innerHTML='';const cnt={};usable().forEach(r=>{const g=r.guide||'(모름)';cnt[g]=(cnt[g]||0)+1;});
+  const names=Object.keys(cnt);if(!names.length){box.innerHTML='<span class="note">추출된 행이 없습니다.</span>';return;}
+  const mk=(label,n,on,fn)=>{const b=document.createElement('button');b.className='chip';b.setAttribute('aria-pressed',on);b.innerHTML=esc(label)+'<small>'+n+'</small>';b.onclick=fn;box.append(b);};
+  const all=names.every(g=>picked.has(g));
+  mk('전체',Object.values(cnt).reduce((a,b)=>a+b,0),all,()=>{all?picked.clear():names.forEach(g=>picked.add(g));saveCfg();applyFilter();});
+  names.forEach(g=>mk(g,cnt[g],picked.has(g),()=>{picked.has(g)?picked.delete(g):picked.add(g);saveCfg();applyFilter();}));
+}
+function applyFilter(){rows=usable().filter(r=>picked.has(r.guide||'(모름)'));drawChips();render();}
+function abbrMap(){const m=[];$('abbr').value.split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)m.push([l.slice(0,i).trim(),l.slice(i+1).trim()]);});return m;}
+function shortPlace(p){
+  p=String(p||'').replace(/\s+/g,' ').trim();const flat=p.replace(/\(.*?\)/g,'').replace(/\s/g,'');
+  for(const [a,b] of abbrMap()){const fa=a.replace(/\s/g,'');if(flat===fa||flat.startsWith(fa))return b;}
+  const m=flat.match(/^([가-힣])[가-힣]*?역?(\d+)번/);if(m)return m[1]+m[2];
+  return p.replace(/\s*\(/,'(');
+}
+const digits=s=>String(s||'').replace(/\D/g,'');
+const okLen=d=>d.length>=8&&d.length<=15;
+function render(){
+  const box=$('cards');box.innerHTML='';
+  const gl=list($('guides').value);
+  if(!rows.length){box.innerHTML='<p class="note">선택한 가이드의 행이 없습니다.</p>';}
+  rows.forEach((r,i)=>{
+    const c=document.createElement('div');c.className='card'+(r.on?'':' off')+(r.phoneSure?'':' check');
+    c.innerHTML=`<div class="strip" onclick="this.classList.toggle('zoom')" title="눌러서 크게/작게"><img src="${r.img}" alt="원본 사진 ${i+1}번째 줄"></div>
+      <div class="fields">
+        <label class="f-on"><span>포함</span><input type="checkbox" id="on${i}" ${r.on?'checked':''}></label>
+        <label class="f-g">가이드${r.guideGuess?' <span class="flag">추정</span>':''}<select id="g${i}">${[...new Set([r.guide,...gl])].filter(Boolean).map(g=>`<option ${g===r.guide?'selected':''}>${esc(g)}</option>`).join('')}<option value="" ${r.guide?'':'selected'}>(모름)</option></select></label>
+        <label class="f-pl">장소 <span class="hint" id="sp${i}">→ ${esc(shortPlace(r.place))}</span><input id="pl${i}" value="${esc(r.place)}"></label>
+        <label class="f-nm">고객명<input id="nm${i}" value="${esc(r.name)}"></label>
+        <label class="ph f-ph">연락처 ${r.phoneSure?'':'<span class="flag">확인 필요</span>'}<input id="ph${i}" value="${esc(r.phone)}" inputmode="numeric"></label>
+      </div>`;
+    box.append(c);
+    c.querySelector('#on'+i).onchange=e=>{r.on=e.target.checked;c.classList.toggle('off',!r.on);makeOut();};
+    c.querySelector('#g'+i).onchange=e=>{r.guide=e.target.value;r.guideGuess=false;drawChips();makeOut();};
+    c.querySelector('#pl'+i).oninput=e=>{r.place=e.target.value;$('sp'+i).textContent='→ '+shortPlace(r.place);if(r.raw)fixes[r.raw]=r.place;saveCfg();makeOut();};
+    c.querySelector('#nm'+i).oninput=e=>{r.name=e.target.value;makeOut();};
+    c.querySelector('#ph'+i).oninput=e=>{r.phone=digits(e.target.value);r.phoneSure=true;c.classList.remove('check');makeOut();};
+  });
+  makeOut();
+}
+function makeOut(){
+  const on=rows.filter(r=>r.on);
+  $('out').value=on.filter(r=>okLen(digits(r.phone))).map(r=>'+'+digits(r.phone)+', #'+$('date').value.trim()+shortPlace(r.place)+' '+String(r.name).trim()).join('\n');
+  $('count').textContent=on.length+'건';
+  const skip=on.filter(r=>!okLen(digits(r.phone))).map(r=>r.name||'(이름 없음)');
+  $('outStatus').textContent=skip.length?'번호 없어서 뺀 사람: '+skip.join(', '):'';
+}
+['date','abbr'].forEach(k=>$(k).addEventListener('input',()=>{saveCfg();render();}));
+['guides','exclude'].forEach(k=>$(k).addEventListener('input',()=>{saveCfg();if(allRows.length)applyFilter();}));
+
+/* ---------- 결과 ---------- */
+$('copy').onclick=async()=>{const t=$('out');try{await navigator.clipboard.writeText(t.value);$('outStatus').textContent='복사했습니다.';}catch(e){t.select();document.execCommand&&document.execCommand('copy');$('outStatus').textContent='복사했습니다. 안 되면 Ctrl+C를 누르세요.';}};
+$('save').onclick=()=>{
+  const g=[...new Set(rows.filter(r=>r.on).map(r=>r.guide).filter(Boolean))].join('_');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+$('out').value],{type:'text/plain;charset=utf-8'}));
+  a.download='주소록_'+$('date').value+(g?'_'+g:'')+'.txt';document.body.append(a);a.click();a.remove();
+  $('outStatus').textContent='저장했습니다 (다운로드 폴더).';
+};
+</script>
+<script>
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+</script>
+</body>
+</html>
