@@ -175,7 +175,8 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
   const nameX0=(kBest||0)*W*0.04;
   let nameRuns=runs.filter(r=>Math.abs(r.x0-nameX0)<W*0.07&&!/hotel/i.test(r.text));
   let nameL=Math.min(...nameRuns.map(r=>r.x0)), nameR=pct(nameRuns.map(r=>r.x1),0.9);
-  const nameCell=cellOf(median(nameRuns.map(r=>r.xc)));
+  // 표 기본 배치(4열=픽업장소, 5열=고객명, 14열=가이드)는 칸을 못 찾았을 때만 씀
+  const nameCell=cellOf(median(nameRuns.map(r=>r.xc)))||(VL.length>=6?[VL[4],VL[5]]:null);
   if(nameCell){nameL=nameCell[0]+3;nameR=nameCell[1]-3;
     const nr2=runs.filter(r=>r.xc>nameL&&r.xc<nameR&&!/hotel/i.test(r.text));if(nr2.length)nameRuns=nr2;}
 
@@ -216,6 +217,7 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
   // 가이드 열 찾기: 목록 이름이 잡힌 칸, 없으면 오른쪽에서 사람 이름(한글 3글자)이 가장 많은 칸
   let guideCell=null;
   if(guideHits.length){const xs=guideHits.map(h=>h.x0+8);const c=cellOf(median(xs));if(c&&c[0]>phR)guideCell=c;}
+  if(!guideCell&&VL.length>=15&&VL[13]>phR)guideCell=[VL[13],VL[14]];
   if(!guideCell){const cnt=new Map();
     all.filter(w=>w.x0>phR).forEach(w=>{const t=w.t.replace(/[^가-힣]/g,'');if(t.length===3&&!NOT_GUIDE.test(t)){const c=cellOf((w.x0+w.x1)/2);if(c){const k=c.join(',');cnt.set(k,(cnt.get(k)||0)+1);}}});
     let best=null;cnt.forEach((v,k)=>{if(v>=2&&(!best||v>best[1]))best=[k,v];});if(best)guideCell=best[0].split(',').map(Number);}
@@ -243,12 +245,18 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
     name=name.replace(/^\(\)?\s*/,'');
     // 장소
     const prect={left:Math.round(placeL),top:band.top,width:Math.round(placeR-placeL),height:band.height},PP={tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'};
+    const p0=col?cleanPlace((await rec(col,prect,PP)).text):'';
     const p1=cleanPlace((await rec(gray,prect,PP)).text);
-    const p2=cleanPlace((await rec(bin,prect,PP)).text);
-    const place=choosePlace(p1,p2);
+    let place=choosePlace(p1,'');
+    {const dict=t=>{try{return placeList().some(q=>q.replace(/\s/g,'')===String(t).replace(/\s/g,''))?2:(matchPlace(t)?1:0);}catch(e){return 0;}};
+     const hg=t=>(String(t).match(/[가-힣]/g)||[]).length;
+     if(p0&&(dict(p0)>=dict(p1))&&(dict(p0)>0||hg(p0)>=2||!p1))place=p0;
+     if(!place||(/^[A-Za-z\s]{2,8}$/.test(place)&&!/^[A-Z]\d$/.test(place))){const p2=cleanPlace((await rec(bin,prect,PP)).text);place=choosePlace(place,p2);}}
     // 가이드
     let direct='';
-    if(guideCell){const gr=await rec(gray,{left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});direct=pickGuideName(gr.text,guides);
+    if(guideCell){const grect={left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height};
+      if(col)direct=pickGuideName((await rec(col,grect,{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'})).text,guides);
+      if(!direct){const gr=await rec(gray,{left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});direct=pickGuideName(gr.text,guides);}
       if(!direct){const gb=await rec(bin,{left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});direct=pickGuideName(gb.text,guides);}}
     let g=direct?[{name:direct}]:guideHits.filter(h=>h.yc>=a.y0&&h.yc<a.y1), guess=false;
     if(!g.length&&guideHits.length){const n=guideHits.slice().sort((x,y)=>Math.abs(x.yc-a.yc)-Math.abs(y.yc-a.yc))[0];if(Math.abs(n.yc-a.yc)<lineH*6){g=[n];guess=true;}}
@@ -304,7 +312,7 @@ function cleanName(t){
 function cleanPlace(t){
   return String(t||'').split('\n').map(l=>l.replace(/[|_~=—]+/g,' ').replace(/\s+/g,' ').trim()).filter(l=>l.length>0).join('')
     .replace(/\s*\(\s*/g,'(').replace(/\s*[)}\]]/g,')').replace(/[{\[]/g,'(')
-    .replace(/^[\d\s:;.,>~\-"'`]+/,'').replace(/등(?=\d|번|\)|$|\()/g,'동').trim();
+    .replace(/^[\d\s:;.,>~\-"'`\u3131-\u318E]+/,'').replace(/등(?=\s|\d|번|\)|$|\()/g,'동').trim();
 }
 function lev(a,b){const m=a.length,n=b.length,d=[...Array(m+1)].map((_,i)=>[i,...Array(n).fill(0)]);for(let j=1;j<=n;j++)d[0][j]=j;
   for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n];}
