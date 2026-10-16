@@ -81,7 +81,7 @@ button:disabled{opacity:.5;cursor:default}
     <h2>설정</h2>
     <div class="grid">
       <label>날짜 코드 (YYMMDD)<input id="date" inputmode="numeric" maxlength="6"></label>
-      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="정지은, 김보경, 윤희진, 이미영"></label>
+      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="" placeholder="예: 정지은, 김보경, 윤희진, 이미영"></label>
       <label>제외할 가이드 (쉼표 구분)<input id="exclude" value="" placeholder="예: 홍길동"></label>
     </div>
     <label>장소 줄임말 (한 줄에 하나, 원래이름=줄임말)
@@ -379,7 +379,7 @@ async function runExtract(all){
     const rec=async(img,rect,params)=>{await w.setParameters(params);const {data}=await w.recognize(rect?padCrop(img,rect):img);return {text:data.text,words:data.words||[]};};
     for(let k=0;k<todo.length;k++){
       const o=todo[k];const img=await loadImg(o.f);const pp=prep(img);
-      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:list($('guides').value),
+      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:guideList(),
         onStep:t=>{setStatus(`사진 ${k+1}/${todo.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/todo.length);}});
       if(!images.includes(o))continue;
       res.rows.forEach(r=>{const cx=res.cols;r.src=o.id;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
@@ -438,11 +438,13 @@ function shortPlace(p){
 }
 const digits=s=>String(s||'').replace(/\D/g,'');
 const okLen=d=>d.length>=8&&d.length<=15;
+const DEFAULT_GUIDES=['정지은','김보경','윤희진','이미영'];
+function guideList(){const g=list($('guides').value);return g.length?g:DEFAULT_GUIDES;}
 const CC={'1':'미국·캐나다','7':'러시아·카자흐스탄','20':'이집트','27':'남아공','30':'그리스','31':'네덜란드','32':'벨기에','33':'프랑스','34':'스페인','36':'헝가리','39':'이탈리아','40':'루마니아','41':'스위스','43':'오스트리아','44':'영국','45':'덴마크','46':'스웨덴','47':'노르웨이','48':'폴란드','49':'독일','51':'페루','52':'멕시코','53':'쿠바','54':'아르헨티나','55':'브라질','56':'칠레','57':'콜롬비아','58':'베네수엘라','60':'말레이시아','61':'호주','62':'인도네시아','63':'필리핀','64':'뉴질랜드','65':'싱가포르','66':'태국','81':'일본','82':'한국','84':'베트남','86':'중국','90':'튀르키예','91':'인도','92':'파키스탄','94':'스리랑카','95':'미얀마','98':'이란','212':'모로코','234':'나이지리아','254':'케냐','351':'포르투갈','352':'룩셈부르크','353':'아일랜드','354':'아이슬란드','356':'몰타','357':'키프로스','358':'핀란드','359':'불가리아','370':'리투아니아','371':'라트비아','372':'에스토니아','380':'우크라이나','381':'세르비아','385':'크로아티아','386':'슬로베니아','420':'체코','421':'슬로바키아','502':'과테말라','506':'코스타리카','507':'파나마','593':'에콰도르','598':'우루과이','852':'홍콩','853':'마카오','855':'캄보디아','856':'라오스','880':'방글라데시','886':'대만','960':'몰디브','961':'레바논','962':'요르단','965':'쿠웨이트','966':'사우디','971':'UAE','972':'이스라엘','974':'카타르','977':'네팔','998':'우즈베키스탄'};
 function country(d){d=digits(d);if(!okLen(d))return '';for(const n of [3,2,1]){const c=CC[d.slice(0,n)];if(c){let t=c;if(d[0]==='1'&&d.length!==11)t+=' · 자릿수 확인';return t;}}return '국가번호 확인';}
 function render(){
   const box=$('cards');box.innerHTML='';
-  const gl=list($('guides').value);
+  const gl=guideList();
   if(!rows.length){box.innerHTML='<p class="note">선택한 가이드의 행이 없습니다.</p>';}
   rows.forEach((r,i)=>{
     const c=document.createElement('div');c.className='card'+(r.on?'':' off')+(r.phoneSure?'':' check');
