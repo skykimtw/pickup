@@ -274,7 +274,7 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
   const names=Object.keys(fresh).sort((a,b)=>fresh[b]-fresh[a]);const canon={};
   names.forEach(n=>{const m=names.find(c=>c!==n&&fresh[c]>=fresh[n]&&canon[c]===undefined&&levD(jamo(c),jamo(n))/Math.max(jamo(c).length,jamo(n).length)<=0.34);canon[n]=m||undefined;});
   rows.forEach(r=>{if(canon[r.guide])r.guide=canon[r.guide];if(r.guide&&!guides.includes(r.guide))r.guideNew=true;});
-  return {rows,cols:{nameL,nameR,phL,phR,placeL,placeR}};
+  return {rows,cols:{nameL,nameR,phL,phR,placeL,placeR,gL:guideCell?guideCell[0]:null,gR:guideCell?guideCell[1]:null}};
 }
 function norm(w){const b=w.bbox;return {t:(w.text||'').trim(),c:w.confidence,x0:b.x0,x1:b.x1,y0:b.y0,y1:b.y1,yc:(b.y0+b.y1)/2,h:b.y1-b.y0};}
 function pct(a,p){if(!a.length)return 0;const s=a.slice().sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))];}
@@ -389,12 +389,15 @@ function padCrop(src,r){
   x.fillStyle=`rgb(${e[0]},${e[1]},${e[2]})`;x.fillRect(0,0,c.width,c.height);
   x.drawImage(src,r.left,r.top,r.width,r.height,P,P,r.width,r.height);return c;
 }
-function strip(img,s,y0,y1,x0,x1){
-  const top=Math.max(0,Math.floor(y0/s)),h=Math.max(8,Math.ceil((y1-y0)/s));
-  const left=Math.max(0,Math.floor((x0||0)/s)),wd=Math.min(img.width-left,Math.ceil(((x1||img.width*s)-(x0||0))/s));
-  const c=document.createElement('canvas');c.width=wd;c.height=Math.min(h,img.height-top);
-  c.getContext('2d').drawImage(img,left,top,wd,c.height,0,0,wd,c.height);return c.toDataURL('image/png');
+function strip(img,s,y0,y1,segs){
+  // segs: [[x0,x1],...] (확대 좌표) — 장소~연락처 + 가이드 칸을 이어 붙여 한 줄로 보여 줌
+  const top=Math.max(0,Math.floor(y0/s)),h=Math.max(8,Math.min(Math.ceil((y1-y0)/s),img.height-top));
+  const parts=segs.filter(Boolean).map(([a,b])=>{const l=Math.max(0,Math.floor(a/s));return [l,Math.max(1,Math.min(img.width-l,Math.ceil((b-a)/s)))];});
+  const GAP=6,c=document.createElement('canvas');c.width=parts.reduce((t,p)=>t+p[1],0)+GAP*(parts.length-1);c.height=h;
+  const x=c.getContext('2d');x.fillStyle='#9aa8a2';x.fillRect(0,0,c.width,h);let ox=0;
+  parts.forEach(([l,w])=>{x.drawImage(img,l,top,w,h,ox,0,w,h);ox+=w+GAP;});return c.toDataURL('image/png');
 }
+
 
 /* ---------- 추출 ---------- */
 async function getWorker(){
@@ -436,7 +439,7 @@ async function runExtract(all){
       const res=await analyzeTable({gray:pp.gray,bin:pp.bin,col:pp.col,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:guideList(),
         onStep:t=>{setStatus(`사진 ${k+1}/${todo.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/todo.length);}});
       if(!images.includes(o))continue;
-      res.rows.forEach(r=>{const cx=res.cols;r.src=o.id;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
+      res.rows.forEach(r=>{const cx=res.cols;r.src=o.id;r.img=strip(img,pp.s,r.y0,r.y1,[[cx.placeL-6,cx.phR+6],cx.gL!=null&&cx.gL>cx.phR?[cx.gL-3,cx.gR+3]:null]);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
       o.done=true;
     }
     setBar(1);
