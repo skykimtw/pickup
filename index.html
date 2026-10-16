@@ -85,7 +85,7 @@ button:disabled{opacity:.5;cursor:default}
     <h2>설정</h2>
     <div class="grid">
       <label>날짜 코드 (YYMMDD)<input id="date" inputmode="numeric" maxlength="6"></label>
-      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="" placeholder="예: 정지은, 김보경, 윤희진, 이미영"></label>
+      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="" placeholder="예: 정지은, 김보경, 윤희진, 이미영, 고경자"></label>
       <label>제외할 가이드 (쉼표 구분)<input id="exclude" value="" placeholder="예: 홍길동"></label>
     </div>
     <label>장소 줄임말 (한 줄에 하나, 원래이름=줄임말)
@@ -146,7 +146,7 @@ button:disabled{opacity:.5;cursor:default}
 <script>
 // 표 사진 분석 핵심 로직 (브라우저/노드 공용)
 // rec(img, rect|null, params) -> Promise<{text, words:[{text,confidence,bbox}]}>
-async function analyzeTable({gray, bin, W, H, rec, guides, onStep, vlines}){
+async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines}){
   const VL=(vlines||[]).slice().sort((a,b)=>a-b);
   const cellOf=x=>{let a=null,b=null;for(const v of VL){if(v<=x)a=v;else{b=v;break;}}return (a!=null&&b!=null&&b-a>W*0.015)?[a,b]:null;};
   const step=s=>onStep&&onStep(s);
@@ -213,6 +213,12 @@ async function analyzeTable({gray, bin, W, H, rec, guides, onStep, vlines}){
 
   // 5) 가이드 이름 위치
   const guideHits=findGuides(all.filter(w=>w.x0>phR),guides);
+  // 가이드 열 찾기: 목록 이름이 잡힌 칸, 없으면 오른쪽에서 사람 이름(한글 3글자)이 가장 많은 칸
+  let guideCell=null;
+  if(guideHits.length){const xs=guideHits.map(h=>h.x0+8);const c=cellOf(median(xs));if(c&&c[0]>phR)guideCell=c;}
+  if(!guideCell){const cnt=new Map();
+    all.filter(w=>w.x0>phR).forEach(w=>{const t=w.t.replace(/[^가-힣]/g,'');if(t.length===3&&!NOT_GUIDE.test(t)){const c=cellOf((w.x0+w.x1)/2);if(c){const k=c.join(',');cnt.set(k,(cnt.get(k)||0)+1);}}});
+    let best=null;cnt.forEach((v,k)=>{if(v>=2&&(!best||v>best[1]))best=[k,v];});if(best)guideCell=best[0].split(',').map(Number);}
 
   const rows=[];
   for(let i=0;i<anchors.length;i++){
@@ -236,13 +242,30 @@ async function analyzeTable({gray, bin, W, H, rec, guides, onStep, vlines}){
     if(rn.replace(/[^A-Za-z]/g,'').length>=2)name=rn;
     name=name.replace(/^\(\)?\s*/,'');
     // 장소
-    const plr=await rec(gray,{left:Math.round(placeL),top:band.top,width:Math.round(placeR-placeL),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});
-    const place=cleanPlace(plr.text);
+    const prect={left:Math.round(placeL),top:band.top,width:Math.round(placeR-placeL),height:band.height},PP={tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'};
+    const p1=cleanPlace((await rec(gray,prect,PP)).text);
+    const p2=cleanPlace((await rec(bin,prect,PP)).text);
+    const place=choosePlace(p1,p2);
     // 가이드
-    let g=guideHits.filter(h=>h.yc>=a.y0&&h.yc<a.y1), guess=false;
+    let direct='';
+    if(guideCell){const gr=await rec(gray,{left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});direct=pickGuideName(gr.text,guides);
+      if(!direct){const gb=await rec(bin,{left:Math.round(guideCell[0]+3),top:band.top,width:Math.round(guideCell[1]-guideCell[0]-6),height:band.height},{tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'});direct=pickGuideName(gb.text,guides);}}
+    let g=direct?[{name:direct}]:guideHits.filter(h=>h.yc>=a.y0&&h.yc<a.y1), guess=false;
     if(!g.length&&guideHits.length){const n=guideHits.slice().sort((x,y)=>Math.abs(x.yc-a.yc)-Math.abs(y.yc-a.yc))[0];if(Math.abs(n.yc-a.yc)<lineH*6){g=[n];guess=true;}}
-    rows.push({name,phone,phoneConf:Math.round(minConf),phoneSure:!!phone&&minConf>=85&&!nanpBad,place,guide:g.length?g[0].name:'',guideGuess:guess,y0:a.y0,y1:a.y1});
+    rows.push({name,phone:normPhone(phone),phoneConf:Math.round(minConf),phoneSure:!!phone&&minConf>=85&&!nanpBad,place,guide:g.length?g[0].name:'',guideGuess:guess,guideDirect:!!direct||(!guess&&g.length>0),gcolor:guideCell&&col?cellColor(col,guideCell[0]+4,band.top+3,guideCell[1]-guideCell[0]-8,band.height-6):null,y0:a.y0,y1:a.y1});
   }
+  // 이름을 못 읽은 줄: 가이드 칸 배경색이 같은 가장 가까운 줄을 따름
+  const cdist=(a,b)=>a&&b?Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]):999;
+  rows.forEach(r=>{if(r.guideDirect||!r.gcolor)return;
+    const cand=rows.filter(o=>o.guideDirect&&o.guide&&cdist(o.gcolor,r.gcolor)<40).sort((x,y)=>Math.abs((x.y0+x.y1)-(r.y0+r.y1))-Math.abs((y.y0+y.y1)-(r.y0+r.y1)));
+    if(cand.length){r.guide=cand[0].guide;r.guideGuess=true;}});
+  // 목록에 없는 새 가이드 이름은 비슷한 것끼리 가장 많이 나온 이름으로 통일
+  const fresh={};rows.forEach(r=>{if(r.guide&&!guides.includes(r.guide))fresh[r.guide]=(fresh[r.guide]||0)+1;});
+  Object.keys(fresh).forEach(n=>{const g=guides.find(g=>levD(jamo(n),jamo(g))/Math.max(jamo(n).length,jamo(g).length)<=0.4||(n.length===3&&g.length===3&&n[0]===g[0]&&n[2]===g[2]));
+    if(g){rows.forEach(r=>{if(r.guide===n)r.guide=g;});delete fresh[n];}});
+  const names=Object.keys(fresh).sort((a,b)=>fresh[b]-fresh[a]);const canon={};
+  names.forEach(n=>{const m=names.find(c=>c!==n&&fresh[c]>=fresh[n]&&canon[c]===undefined&&levD(jamo(c),jamo(n))/Math.max(jamo(c).length,jamo(n).length)<=0.34);canon[n]=m||undefined;});
+  rows.forEach(r=>{if(canon[r.guide])r.guide=canon[r.guide];if(r.guide&&!guides.includes(r.guide))r.guideNew=true;});
   return {rows,cols:{nameL,nameR,phL,phR,placeL,placeR}};
 }
 function norm(w){const b=w.bbox;return {t:(w.text||'').trim(),c:w.confidence,x0:b.x0,x1:b.x1,y0:b.y0,y1:b.y1,yc:(b.y0+b.y1)/2,h:b.y1-b.y0};}
@@ -254,7 +277,26 @@ function pickPhone(text){
   if(cand.length)return cand.sort((a,b)=>b.length-a.length)[0].slice(0,15);
   const d=lines.join(' ').replace(/#\s*\d+/g,'').replace(/\D/g,'');return d.length>=8?d.slice(0,15):'';
 }
+const NOT_GUIDE=/^(왓츠앱|시스템|전화함|전화옴|이메일|호텔메|텔메모|카카오|문자함|영어권|일본어|중국어)$/;
+function cellColor(cv,x,y,w,h){try{const d=cv.getContext('2d').getImageData(Math.max(0,Math.round(x)),Math.max(0,Math.round(y)),Math.max(1,Math.round(w)),Math.max(1,Math.round(h))).data;
+  let r=0,g=0,b=0,n=0;for(let i=0;i<d.length;i+=4){const L=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(L>140){r+=d[i];g+=d[i+1];b+=d[i+2];n++;}}return n?[r/n,g/n,b/n]:null;}catch(e){return null;}}
+function pickGuideName(text,guides){
+  const toks=String(text||'').split(/\s+/).map(t=>t.replace(/[^가-힣]/g,'')).filter(t=>t.length>=2&&t.length<=4);
+  let best=null;
+  for(const t of toks)for(const g of guides){const d=levD(jamo(t),jamo(g))/Math.max(jamo(t).length,jamo(g).length);if(d<=0.34&&(!best||d<best.d))best={n:g,d};}
+  if(best)return best.n;
+  const nw=toks.find(t=>t.length===3&&!NOT_GUIDE.test(t));return nw||'';
+}
+function normPhone(d){d=String(d||'');for(const cc of ['886','358','353','81','82','86','44','49','33','31','32','41','43','45','46','47','61','62','63','64','66','84','90','91']){if(d.startsWith(cc+'0')&&d.length>cc.length+8)return cc+d.slice(cc.length+1);}return d;}
+function choosePlace(p1,p2){const dict=t=>{try{return placeList().some(p=>p.replace(/\s/g,'')===String(t).replace(/\s/g,''))?2:(matchPlace(t)?1:0);}catch(e){return 0;}};
+  const d1=dict(p1),d2=dict(p2);if(d2>d1)return p2;if(d1>d2)return p1;
+  const hg=t=>(String(t).match(/[가-힣]/g)||[]).length;
+  if(!p1&&p2)return p2;if(/^[A-Za-z\s]{2,8}$/.test(p1)&&!/^[A-Z]\d$/.test(p1)&&hg(p2)>=3)return p2;return p1;}
+function placeScore(t){t=String(t||'');let sc=(t.match(/[가-힣]/g)||[]).length*2;
+  try{if(placeList().some(p=>p.replace(/\s/g,'')===t.replace(/\s/g,'')))sc+=100;else if(matchPlace(t))sc+=60;}catch(e){}
+  if(/^[A-Za-z]{2,5}$/.test(t))sc-=5;return sc;}
 function cleanName(t){
+  const par=String(t||'').match(/\(\s*([A-Za-z][A-Za-z .'’-]{2,})\)/);if(par)return par[1].replace(/\s+/g,' ').trim();
   const ls=String(t||'').split('\n').map(l=>l.replace(/[^A-Za-zÀ-ž().'’ -]/g,' ').replace(/\s+/g,' ').trim()).filter(l=>/[A-Za-z]{2}/.test(l));
   ls.sort((a,b)=>b.replace(/[^A-Za-z]/g,'').length-a.replace(/[^A-Za-z]/g,'').length);
   return (ls[0]||'').split(' ').filter(x=>(/[A-Za-z]{2}/.test(x)||/^[A-Z]$/.test(x))&&!/^[a-z]{1,3}\)$/.test(x)).join(' ').replace(/^(?:[A-Z]{2,3}|[a-z]{1,3})\s+(?=\(\)|[A-Z][a-z])/,'').trim();
@@ -331,7 +373,7 @@ function prep(img){
   const vlines=[];let grp=[];
   for(let xx=0;xx<W;xx++){if(cnt[xx]>H*0.4){if(grp.length&&xx-grp[grp.length-1]>8){vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);grp=[];}grp.push(xx);}}
   if(grp.length)vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);
-  return {gray:g,bin:b,W,H,s,vlines};
+  return {gray:g,bin:b,col:c,W,H,s,vlines};
 }
 function padCrop(src,r){
   const P=16,c=document.createElement('canvas');c.width=r.width+2*P;c.height=r.height+2*P;const x=c.getContext('2d');
@@ -383,7 +425,7 @@ async function runExtract(all){
     const rec=async(img,rect,params)=>{await w.setParameters(params);const {data}=await w.recognize(rect?padCrop(img,rect):img);return {text:data.text,words:data.words||[]};};
     for(let k=0;k<todo.length;k++){
       const o=todo[k];const img=await loadImg(o.f);const pp=prep(img);
-      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:guideList(),
+      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,col:pp.col,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:guideList(),
         onStep:t=>{setStatus(`사진 ${k+1}/${todo.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/todo.length);}});
       if(!images.includes(o))continue;
       res.rows.forEach(r=>{const cx=res.cols;r.src=o.id;r.img=strip(img,pp.s,r.y0,r.y1,cx.placeL-6,cx.phR+6);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
@@ -442,7 +484,7 @@ function shortPlace(p){
 }
 const digits=s=>String(s||'').replace(/\D/g,'');
 const okLen=d=>d.length>=8&&d.length<=15;
-const DEFAULT_GUIDES=['정지은','김보경','윤희진','이미영'];
+const DEFAULT_GUIDES=['정지은','김보경','윤희진','이미영','고경자'];
 function guideList(){const g=list($('guides').value);return g.length?g:DEFAULT_GUIDES;}
 const CC={'1':'미국·캐나다','7':'러시아·카자흐스탄','20':'이집트','27':'남아공','30':'그리스','31':'네덜란드','32':'벨기에','33':'프랑스','34':'스페인','36':'헝가리','39':'이탈리아','40':'루마니아','41':'스위스','43':'오스트리아','44':'영국','45':'덴마크','46':'스웨덴','47':'노르웨이','48':'폴란드','49':'독일','51':'페루','52':'멕시코','53':'쿠바','54':'아르헨티나','55':'브라질','56':'칠레','57':'콜롬비아','58':'베네수엘라','60':'말레이시아','61':'호주','62':'인도네시아','63':'필리핀','64':'뉴질랜드','65':'싱가포르','66':'태국','81':'일본','82':'한국','84':'베트남','86':'중국','90':'튀르키예','91':'인도','92':'파키스탄','94':'스리랑카','95':'미얀마','98':'이란','212':'모로코','234':'나이지리아','254':'케냐','351':'포르투갈','352':'룩셈부르크','353':'아일랜드','354':'아이슬란드','356':'몰타','357':'키프로스','358':'핀란드','359':'불가리아','370':'리투아니아','371':'라트비아','372':'에스토니아','380':'우크라이나','381':'세르비아','385':'크로아티아','386':'슬로베니아','420':'체코','421':'슬로바키아','502':'과테말라','506':'코스타리카','507':'파나마','593':'에콰도르','598':'우루과이','852':'홍콩','853':'마카오','855':'캄보디아','856':'라오스','880':'방글라데시','886':'대만','960':'몰디브','961':'레바논','962':'요르단','965':'쿠웨이트','966':'사우디','971':'UAE','972':'이스라엘','974':'카타르','977':'네팔','998':'우즈베키스탄'};
 function country(d){d=digits(d);if(!okLen(d))return '';for(const n of [3,2,1]){const c=CC[d.slice(0,n)];if(c){let t=c;if(d[0]==='1'&&d.length!==11)t+=' · 자릿수 확인';return t;}}return '국가번호 확인';}
