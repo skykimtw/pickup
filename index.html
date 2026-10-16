@@ -64,6 +64,7 @@ button:disabled{opacity:.5;cursor:default}
 #ptr{position:fixed;left:0;right:0;top:0;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(-70px);transition:transform .2s}
 #ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 #ptr.ready span{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.srcText{white-space:pre-wrap;font-family:var(--mono);font-size:.82rem;background:var(--surface);border:1px dashed var(--line);border-radius:4px;padding:6px 8px;color:var(--muted)}
 .wa{display:inline-flex;align-items:center;gap:4px;flex:none;background:#25d366;color:#fff;font-weight:700;font-size:.85rem;text-decoration:none;border-radius:6px;padding:8px 10px;white-space:nowrap}.wa[hidden]{display:none}
 .hint{font-size:.78rem;color:var(--muted)}
 .flag{font-size:.78rem;color:var(--warn);font-weight:700}
@@ -111,6 +112,13 @@ button:disabled{opacity:.5;cursor:default}
       <span class="status" id="status">처음 한 번은 준비하느라 1분쯤 걸립니다. 와이파이에서 처음 열어 두면 좋습니다.</span>
     </div>
     <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+  </section>
+
+  <section>
+    <h2>텍스트로 추가</h2>
+    <p class="note">카톡으로 글로 받은 추가 손님을 그대로 붙여넣고 <b>텍스트 추가</b>를 누르세요. 가이드 이름·장소(예: 명동9번)·손님 이름·번호를 알아서 찾습니다.</p>
+    <textarea id="addText" rows="6" placeholder="정지은가이드님 명동9번추가여&#10;(MR)Owen Rees 2명&#10;44-07377218695&#10;&#10;PETUKHOV ANTON 2명&#10;7-9021710116"></textarea>
+    <div class="row"><button class="primary" id="addTextBtn">텍스트 추가</button><span class="status" id="addTextStatus"></span></div>
   </section>
 
   <section>
@@ -505,7 +513,7 @@ function render(){
   if(!rows.length){box.innerHTML='<p class="note">선택한 가이드의 행이 없습니다.</p>';}
   rows.forEach((r,i)=>{
     const c=document.createElement('div');c.className='card'+(r.on?'':' off')+(r.phoneSure?'':' check');
-    c.innerHTML=`<div class="strip" onclick="this.classList.toggle('zoom')" title="눌러서 크게/작게"><img src="${r.img}" alt="원본 사진 ${i+1}번째 줄"></div>
+    c.innerHTML=`${r.img?`<div class="strip" onclick="this.classList.toggle('zoom')" title="눌러서 크게/작게"><img src="${r.img}" alt="원본 사진 ${i+1}번째 줄"></div>`:`<div class="srcText">✎ 텍스트로 추가\n${esc(r.srcText||'')}</div>`}
       <div class="fields">
         <label class="f-on"><span>포함</span><input type="checkbox" id="on${i}" ${r.on?'checked':''}></label>
         <label class="f-g">가이드${r.guideGuess?' <span class="flag">추정</span>':''}<select id="g${i}">${[...new Set([r.guide,...gl])].filter(Boolean).map(g=>`<option ${g===r.guide?'selected':''}>${esc(g)}</option>`).join('')}<option value="" ${r.guide?'':'selected'}>(모름)</option></select></label>
@@ -548,6 +556,37 @@ function drawHist(){const h=loadHist(),box=$('hist');$('histClear').hidden=!h.le
 $('histClear').onclick=()=>{if($('histClear').dataset.sure){try{localStorage.removeItem(HKEY);}catch(e){}delete $('histClear').dataset.sure;$('histClear').textContent='기록 모두 지우기';drawHist();}else{$('histClear').dataset.sure=1;$('histClear').textContent='한 번 더 누르면 지웁니다';}};
 $('out').addEventListener('input',()=>{clearTimeout(histT);histT=setTimeout(saveHistory,1500);});
 drawHist();
+/* ---------- 텍스트로 추가 ---------- */
+function parseTextEntries(text){
+  const lines=String(text||'').split(/\r?\n/).map(l=>l.trim());const gl=guideList();const out=[];
+  let guide='',place='',pendingName='',pendingIdx=-1;
+  const placeIn=l=>{let t=l.replace(/\s/g,'');gl.forEach(n=>{t=t.split(n).join(' ');});t=t.replace(/가이드님?|기사님?|님/g,' ');const m=t.match(/([가-힣]{1,4}?역?\d{1,2}번(?:출구)?)/);if(m)return m[1].replace(/출구$/,'');try{const p=placeList().find(p=>p.length>=3&&l.replace(/\s/g,'').includes(p.replace(/\s/g,'')));if(p)return p;}catch(e){}return '';};
+  const cleanNm=l=>l.replace(/\((?:MR|MRS|MS|MISS|DR)\.?\)|\b(?:MR|MRS|MS|MISS|DR)\.\s*/ig,' ').replace(/\d+\s*(?:명|인|pax|PAX)/g,' ').replace(/[^A-Za-zÀ-ž .'’-]/g,' ').replace(/\s+/g,' ').trim();
+  lines.forEach((l,i)=>{
+    if(!l)return;
+    const g=gl.find(n=>l.replace(/\s/g,'').includes(n));
+    if(g&&!/\d{6,}/.test(l)){guide=g;const p=placeIn(l);if(p)place=p;return;}
+    const d=l.replace(/[^\d]/g,'');
+    const latin=(l.match(/[A-Za-z]/g)||[]).length;
+    if(d.length>=8&&d.length<=16&&latin<3){ // 번호 줄
+      out.push({name:pendingName,phone:normPhone(d),place,guide,srcText:(pendingIdx>=0?lines[pendingIdx]+'\n':'')+l});pendingName='';pendingIdx=-1;return;}
+    if(latin>=3&&d.length>=8){ // 이름과 번호가 한 줄
+      const ph=(l.match(/\+?\d[\d\s-]{7,}\d/)||[''])[0];out.push({name:cleanNm(l.replace(ph,'')),phone:normPhone(ph.replace(/\D/g,'')),place,guide,srcText:l});return;}
+    if(latin>=3){pendingName=cleanNm(l);pendingIdx=i;const p=placeIn(l);if(p)place=p;return;}
+    const p=placeIn(l);if(p)place=p;
+  });
+  return out.filter(e=>e.name||e.phone);
+}
+$('addTextBtn').onclick=()=>{
+  const es=parseTextEntries($('addText').value);
+  if(!es.length){$('addTextStatus').textContent='손님 이름·번호를 찾지 못했습니다. 이름 줄 다음에 번호 줄이 있는지 확인해 주세요.';return;}
+  es.forEach(e=>{const m=e.place&&!placeList().includes(e.place)?matchPlace(e.place):null;
+    allRows.push({name:e.name,phone:e.phone,place:m||e.place,auto:!!m,guide:e.guide,guideDirect:!!e.guide,phoneSure:okLen(e.phone),src:'text',srcText:e.srcText,on:true});
+    if(e.guide)picked.add(e.guide);});
+  const merged=dedupe();saveCfg();applyFilter();saveHistory();
+  $('addTextStatus').textContent=`${es.length}명 추가했습니다${merged?` (겹친 ${merged}명 합침)`:''}. 아래 검토에서 확인하세요.`;
+  $('addText').value='';
+};
 if(navigator.share)$('share').hidden=false;
 /* 홈 화면 앱에서 당겨서 새로고침 */
 (()=>{const standalone=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;if(!standalone)return;
