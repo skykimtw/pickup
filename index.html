@@ -61,6 +61,9 @@ button:disabled{opacity:.5;cursor:default}
 .fields .ph input{font-family:var(--mono)}
 .phrow{display:flex;gap:6px;align-items:center}.phrow input{flex:1;min-width:0}
 .hist details{border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}.hist summary{cursor:pointer;font-weight:600}.hist textarea{width:100%;margin-top:8px}#hist{display:grid;gap:8px}.cc{font-size:.78rem;color:var(--muted);font-weight:400}
+#ptr{position:fixed;left:0;right:0;top:0;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(-70px);transition:transform .2s}
+#ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+#ptr.ready span{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .wa{display:inline-flex;align-items:center;gap:4px;flex:none;background:#25d366;color:#fff;font-weight:700;font-size:.85rem;text-decoration:none;border-radius:6px;padding:8px 10px;white-space:nowrap}.wa[hidden]{display:none}
 .hint{font-size:.78rem;color:var(--muted)}
 .flag{font-size:.78rem;color:var(--warn);font-weight:700}
@@ -71,6 +74,7 @@ button:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
+<div id="ptr"><span id="ptrText">↓ 당겨서 새로고침</span></div>
 <div class="wrap">
   <header>
     <h1>픽업표 주소록 변환기</h1>
@@ -492,6 +496,15 @@ $('histClear').onclick=()=>{if($('histClear').dataset.sure){try{localStorage.rem
 $('out').addEventListener('input',()=>{clearTimeout(histT);histT=setTimeout(saveHistory,1500);});
 drawHist();
 if(navigator.share)$('share').hidden=false;
+/* 홈 화면 앱에서 당겨서 새로고침 */
+(()=>{const standalone=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;if(!standalone)return;
+  const box=$('ptr'),txt=$('ptrText'),TH=90;let y0=null,pull=0;
+  addEventListener('touchstart',e=>{y0=(window.scrollY<=0&&e.touches.length===1)?e.touches[0].clientY:null;pull=0;box.style.transition='none';},{passive:true});
+  addEventListener('touchmove',e=>{if(y0==null)return;pull=e.touches[0].clientY-y0;if(pull<=0){box.style.transform='';return;}
+    box.style.transform=`translateY(${Math.min(pull,TH+30)-70}px)`;const ok=pull>TH;box.classList.toggle('ready',ok);
+    txt.textContent=ok?(allRows.length?'놓으면 새로고침 (검토 중인 내용은 사라짐)':'놓으면 새로고침'):'↓ 당겨서 새로고침';},{passive:true});
+  addEventListener('touchend',()=>{box.style.transition='';if(y0!=null&&pull>TH){txt.textContent='새로고침 중…';location.reload();return;}box.style.transform='';box.classList.remove('ready');y0=null;pull=0;},{passive:true});
+})();
 $('share').onclick=async()=>{const t=$('out').value.trim();if(!t){$('outStatus').textContent='공유할 내용이 없습니다.';return;}
   try{await navigator.share({title:'주소록_'+$('date').value,text:t});$('outStatus').textContent='공유했습니다.';}
   catch(e){if(e&&e.name==='AbortError')return;$('outStatus').textContent='공유가 안 됩니다. 복사를 눌러 주세요.';}};
