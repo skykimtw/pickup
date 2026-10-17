@@ -259,7 +259,7 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 <script>
 // 표 사진 분석 핵심 로직 (브라우저/노드 공용)
 // rec(img, rect|null, params) -> Promise<{text, words:[{text,confidence,bbox}]}>
-async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines}){
+async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines, hlines}){
   const VL=(vlines||[]).slice().sort((a,b)=>a-b);
   const cellOf=x=>{let a=null,b=null;for(const v of VL){if(v<=x)a=v;else{b=v;break;}}return (a!=null&&b!=null&&b-a>W*0.015)?[a,b]:null;};
   const step=s=>onStep&&onStep(s);
@@ -311,7 +311,20 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
   phoneRuns.forEach(p=>{if(!anchors.some(a=>Math.abs(a.yc-p.yc)<p.h*2.2))anchors.push({yc:p.yc,h:p.h,name:null});});
   anchors.sort((a,b)=>a.yc-b.yc);
   const lineH=median(all.map(w=>w.h))||20;
-  anchors.forEach((a,i)=>{
+  const HL=(hlines||[]).filter((v,i,a)=>i===0||v-a[i-1]>lineH*1.2);
+  let byCell=false;
+  if(HL.length>=3){
+    const bandOf=y=>{let k=0;while(k<HL.length&&HL[k]<=y)k++;return k;};
+    const groups=new Map();anchors.forEach(a=>{const k=bandOf(a.yc);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(a);});
+    const merged=[];
+    groups.forEach((g,k)=>{const y0=k>0?HL[k-1]:0,y1=k<HL.length?HL[k]:H;
+      if(y1-y0<lineH*0.8)return;
+      const names=g.filter(a=>a.name).map(a=>a.name).sort((x,y)=>x.yc-y.yc);
+      const name=names.length?{text:names.map(n=>n.text).join(' '),ws:names.flatMap(n=>n.ws),conf:names.reduce((t,n)=>t+n.conf,0)/names.length,yc:names[0].yc,h:names[0].h}:null;
+      merged.push({yc:(y0+y1)/2,h:g[0].h,name,y0:Math.max(0,y0+2),y1:Math.min(H,y1-1),cell:true});});
+    if(merged.length){anchors=merged.sort((a,b)=>a.yc-b.yc);byCell=true;}
+  }
+  if(!byCell)anchors.forEach((a,i)=>{
     const prev=anchors[i-1],next=anchors[i+1];
     a.y0=Math.max(0,prev?(prev.yc+a.yc)/2:a.yc-lineH*2.5);
     a.y1=Math.min(H,next?(next.yc+a.yc)/2:a.yc+lineH*2.5);
@@ -350,7 +363,7 @@ async function analyzeTable({gray, bin, col, W, H, rec, guides, onStep, vlines})
     let name=a.name?a.name.text:'';
     const nm=nameCell?0:W*0.015;const nrect={left:Math.round(nameL-nm),top:band.top,width:Math.round(nameR-nameL+2*nm),height:band.height};
     const NP={tessedit_pageseg_mode:'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1'};
-    const scoreName=r=>{const t=cleanName(r.text);const ws=(r.words||[]).filter(w=>/[A-Za-z]{2}/.test(w.text));const c=ws.length?ws.reduce((a,w)=>a+w.confidence,0)/ws.length:0;return {t,c:c+Math.min(t.replace(/[^A-Za-z]/g,'').length,20)};};
+    const scoreName=r=>{const t=byCell?joinName(r.text):cleanName(r.text);const ws=(r.words||[]).filter(w=>/[A-Za-z]{2}/.test(w.text));const c=ws.length?ws.reduce((a,w)=>a+w.confidence,0)/ws.length:0;return {t,c:c+Math.min(t.replace(/[^A-Za-z]/g,'').length,20)};};
     const c1=scoreName(await rec(gray,nrect,NP)), c2=scoreName(await rec(bin,nrect,NP));
     const best2=c1.c>=c2.c?c1:c2;
     const rn=best2.t, lw=x=>x.toLowerCase().split(' ').filter(Boolean);
@@ -393,11 +406,19 @@ function norm(w){const b=w.bbox;return {t:(w.text||'').trim(),c:w.confidence,x0:
 function pct(a,p){if(!a.length)return 0;const s=a.slice().sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))];}
 function median(a){return pct(a,0.5);}
 function pickPhone(text){
-  const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
-  const cand=lines.filter(l=>!/^#/.test(l)).map(l=>l.replace(/#\s*\d+/g,'').replace(/[^\d]/g,'')).filter(d=>d.length>=8);
+  const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean).filter(l=>!/^#/.test(l)).map(l=>l.replace(/#\s*\d+/g,'').trim());
+  // 한 칸에 번호가 두 줄로 나뉜 경우만 이어 붙임 (앞줄이 '-'로 끝나거나 국가번호만 있을 때, 뒷줄이 짧은 꼬리일 때)
+  const parts=[];
+  for(const l of lines){const d=l.replace(/\D/g,'');if(!d)continue;
+    const p=parts[parts.length-1];
+    if(p&&(/-\s*$/.test(p.raw)||p.d.length<=3||(d.length<=4&&p.d.length>=6))&&(p.d+d).length<=15){p.d+=d;p.raw=l;}
+    else parts.push({d,raw:l});}
+  const cand=parts.map(p=>p.d).filter(d=>d.length>=8);
   if(cand.length)return cand.sort((a,b)=>b.length-a.length)[0].slice(0,15);
-  const d=lines.join(' ').replace(/#\s*\d+/g,'').replace(/\D/g,'');return d.length>=8?d.slice(0,15):'';
+  const d=parts.map(p=>p.d).join('');return d.length>=8?d.slice(0,15):'';
 }
+
+
 const NOT_GUIDE=/^(왓츠앱|시스템|전화함|전화옴|이메일|호텔메|텔메모|카카오|문자함|영어권|일본어|중국어)$/;
 function cellColor(cv,x,y,w,h){try{const d=cv.getContext('2d').getImageData(Math.max(0,Math.round(x)),Math.max(0,Math.round(y)),Math.max(1,Math.round(w)),Math.max(1,Math.round(h))).data;
   let r=0,g=0,b=0,n=0;for(let i=0;i<d.length;i+=4){const L=.299*d[i]+.587*d[i+1]+.114*d[i+2];if(L>140){r+=d[i];g+=d[i+1];b+=d[i+2];n++;}}return n?[r/n,g/n,b/n]:null;}catch(e){return null;}}
@@ -416,6 +437,10 @@ function choosePlace(p1,p2){const dict=t=>{try{return placeList().some(p=>p.repl
 function placeScore(t){t=String(t||'');let sc=(t.match(/[가-힣]/g)||[]).length*2;
   try{if(placeList().some(p=>p.replace(/\s/g,'')===t.replace(/\s/g,'')))sc+=100;else if(matchPlace(t))sc+=60;}catch(e){}
   if(/^[A-Za-z]{2,5}$/.test(t))sc-=5;return sc;}
+function joinName(t){
+  const par=String(t||'').match(/\(\s*([A-Za-z][A-Za-z .'’-]{2,})\)/);if(par)return par[1].replace(/\s+/g,' ').trim();
+  return String(t||'').split('\n').map(l=>cleanName(l)).filter(l=>/[A-Za-z]{2}/.test(l)).join(' ').replace(/\s+/g,' ').trim();
+}
 function cleanName(t){
   const par=String(t||'').match(/\(\s*([A-Za-z][A-Za-z .'’-]{2,})\)/);if(par)return par[1].replace(/\s+/g,' ').trim();
   const ls=String(t||'').split('\n').map(l=>l.replace(/[^A-Za-zÀ-ž().'’ -]/g,' ').replace(/\s+/g,' ').trim()).filter(l=>/[A-Za-z]{2}/.test(l));
@@ -494,7 +519,13 @@ function prep(img){
   const vlines=[];let grp=[];
   for(let xx=0;xx<W;xx++){if(cnt[xx]>H*0.4){if(grp.length&&xx-grp[grp.length-1]>8){vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);grp=[];}grp.push(xx);}}
   if(grp.length)vlines.push(grp.reduce((a,b)=>a+b,0)/grp.length);
-  return {gray:g,bin:b,col:c,W,H,s,vlines};
+  // 엑셀 가로 칸선 찾기 (한 칸 안에 두 줄로 쓴 글자를 한 손님으로 묶는 데 씀)
+  const hc=new Uint32Array(H);
+  for(let y=k;y<H-k;y++){const o=y*W;for(let xx=0;xx<W;xx+=2){const v=L[o+xx];if(v<L[o+xx-k*W]-8&&v<L[o+xx+k*W]-8)hc[y]++;}}
+  const hlines=[];let hg=[];
+  for(let y=0;y<H;y++){if(hc[y]>W/2*0.35){if(hg.length&&y-hg[hg.length-1]>6){hlines.push(hg.reduce((a,b)=>a+b,0)/hg.length);hg=[];}hg.push(y);}}
+  if(hg.length)hlines.push(hg.reduce((a,b)=>a+b,0)/hg.length);
+  return {gray:g,bin:b,col:c,W,H,s,vlines,hlines};
 }
 function padCrop(src,r){
   const P=16,c=document.createElement('canvas');c.width=r.width+2*P;c.height=r.height+2*P;const x=c.getContext('2d');
@@ -549,7 +580,7 @@ async function runExtract(all){
     const rec=async(img,rect,params)=>{await w.setParameters(params);const {data}=await w.recognize(rect?padCrop(img,rect):img);return {text:data.text,words:data.words||[]};};
     for(let k=0;k<todo.length;k++){
       const o=todo[k];const img=await loadImg(o.f);const pp=prep(img);
-      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,col:pp.col,W:pp.W,H:pp.H,vlines:pp.vlines,rec,guides:guideList(),
+      const res=await analyzeTable({gray:pp.gray,bin:pp.bin,col:pp.col,W:pp.W,H:pp.H,vlines:pp.vlines,hlines:pp.hlines,rec,guides:guideList(),
         onStep:t=>{setStatus(`사진 ${k+1}/${todo.length} · ${t}`);const m=t.match(/(\d+)\/(\d+)/);setBar(((k)+(m&&t.startsWith('행')?m[1]/m[2]:0.1))/todo.length);}});
       if(!images.includes(o))continue;
       res.rows.forEach(r=>{const cx=res.cols;r.src=o.id;r.img=strip(img,pp.s,r.y0,r.y1,[[cx.placeL-6,cx.phR+6],cx.gL!=null&&cx.gL>cx.phR?[cx.gL-3,cx.gR+3]:null]);r.raw=r.place;if(fixes[r.place])r.place=fixes[r.place];else{const m=matchPlace(r.place);if(m){r.place=m;r.auto=true;}}r.on=true;allRows.push(r);});
