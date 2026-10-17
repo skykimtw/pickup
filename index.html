@@ -241,6 +241,7 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
       <label>자주 쓰는 픽업지 (고치면 자동으로 추가됩니다)
         <textarea id="places" rows="4" placeholder="예: 알로프트명동"></textarea></label>
       <p class="note">"OO역 N번" 형태 픽업지는 목록에 없어도 첫 글자와 번호로 줄입니다(예: 을지로입구역7번 → 을7). 글자 인식이 픽업지를 비슷하게 잘못 읽으면 자주 쓰는 픽업지 중 가장 가까운 이름으로 고칩니다.</p>
+      <div class="row"><button class="btn main" id="setDone">설정 완료</button></div>
     </div>
   </details>
 </main>
@@ -706,6 +707,7 @@ $('tabPhoto').onclick=()=>setTab('photo');$('tabText').onclick=()=>setTab('text'
 try{if(localStorage.getItem('pickupNoticeOff')==='1')$('notice').hidden=true;}catch(e){}
 $('noticeClose').onclick=()=>{$('notice').hidden=true;try{localStorage.setItem('pickupNoticeOff','1');}catch(e){}};
 $('noticeSet').onclick=()=>$('openSet').click();
+$('setDone').onclick=()=>{saveCfg();if(allRows.length)applyFilter();$('settings').open=false;window.scrollTo({top:0,behavior:'smooth'});};
 $('openSet').onclick=()=>{const d=$('settings');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});};
 $('dockCopy').onclick=()=>$('copy').click();$('dockShare').onclick=()=>$('share').click();
 if(navigator.share){$('share').hidden=false;$('dockShare').hidden=false;}
