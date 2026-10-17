@@ -3,153 +3,240 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#e07b00">
+<meta name="theme-color" content="#1c2b4a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>픽업표 주소록 변환기</title>
 <script src="lib/tesseract.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
+/* 픽업 탑승권: 남색 잉크 + 신호 주황 도장, 손님마다 절취선 있는 티켓 */
 :root{
-  --bg:#f3f5f4; --surface:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#d5ddd9;
-  --accent:#e07b00; --accent-ink:#ffffff; --warn:#b3261e; --warnbg:#fde8e6; --chip:#fff1de;
-  --sans:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
-  --mono:Consolas,"D2Coding",ui-monospace,monospace;
+  --paper:#eef1f5; --card:#ffffff; --ink:#1c2b4a; --ink2:#53627d; --line:#d9dfe8; --field:#f4f6f9;
+  --sig:#f2711c; --sig-ink:#ffffff; --stamp:#fff0e5; --ok:#1faf5a; --warn:#d93a2b; --warnbg:#fff1ef;
+  --font:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#121715; --surface:#1b2220; --fg:#e6ece9; --muted:#9aa8a2; --line:#2e3834;
-  --accent:#f0962a; --accent-ink:#1a1206; --warn:#ff8a80; --warnbg:#3a1a18; --chip:#3a2a14; color-scheme:dark}}
+  --paper:#0e1420; --card:#18202f; --ink:#e8ecf3; --ink2:#9aa6bb; --line:#2a3447; --field:#202a3b;
+  --sig:#ff8a3d; --sig-ink:#1a0d03; --stamp:#3a2414; --ok:#34c473; --warn:#ff7a6b; --warnbg:#3a1d1a; color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55}
-.wrap{max-width:960px;margin:0 auto;padding:20px 16px 48px;display:grid;gap:16px}
-h1{font-size:1.4rem;margin:0}
-.sub{color:var(--muted);margin:2px 0 0;font-size:.92rem}
-section{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px;min-width:0}
-h2{font-size:.8rem;letter-spacing:.06em;color:var(--muted);margin:0;font-weight:700}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
-label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
-input,textarea,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
-input[type=checkbox]{width:auto}
-textarea{font-family:var(--mono);font-size:.85rem;resize:vertical}
-input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.drop{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
-.drop.over{border-color:var(--accent);background:var(--chip)}
-.thumbs{display:flex;flex-wrap:wrap;gap:8px}
-.thumbs figure{margin:0;position:relative}
-.thumbs img{height:64px;border-radius:4px;border:1px solid var(--line)}
-.thumbs button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;padding:0;border-radius:50%;font-size:12px}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:8px 14px;cursor:pointer}
-button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-button:disabled{opacity:.5;cursor:default}
-.status{font-size:.88rem;color:var(--muted)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.5;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+button,input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
+:focus-visible{outline:3px solid var(--sig);outline-offset:2px}
+
+/* 상단 바 */
+.top{position:sticky;top:0;z-index:20;background:var(--ink);color:var(--paper);padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
+@media (prefers-color-scheme: dark){.top{background:#060a12;color:var(--ink)}}
+.top-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.brand{font-weight:800;font-size:1.15rem;letter-spacing:-.02em;flex:1;display:flex;align-items:center;gap:8px}
+.brand i{width:12px;height:12px;border-radius:3px;background:var(--sig);transform:rotate(45deg)}
+.datebox{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border-radius:10px;padding:4px 6px 4px 12px}
+.datebox span{font-size:.8rem;opacity:.75}
+.datebox input{width:5.6em;background:transparent;border:0;color:inherit;font-weight:800;font-size:1.05rem;padding:4px 2px;text-align:center}
+.gear{background:transparent;border:0;color:inherit;font-size:1.3rem;padding:6px 8px;border-radius:10px;cursor:pointer;line-height:1}
+
+.wrap{max-width:760px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));display:grid;gap:22px}
+.step{display:grid;gap:12px}
+.step-h{display:flex;align-items:baseline;gap:10px}
+.step-h b{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--paper);font-size:.85rem;font-weight:800;flex:none;transform:translateY(3px)}
+.step-h h2{margin:0;font-size:1.2rem;font-weight:800;letter-spacing:-.02em}
+.step-h .count{margin-left:auto;font-weight:700;color:var(--ink2);font-size:.95rem}
+.panel{background:var(--card);border-radius:16px;padding:16px;display:grid;gap:12px;box-shadow:0 1px 0 var(--line)}
+.note{font-size:.88rem;color:var(--ink2);margin:0}
+.status{font-size:.9rem;color:var(--ink2)}
 .status.err{color:var(--warn)}
-.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
-.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+
+/* 사진/글 탭 */
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--field);border-radius:12px;padding:4px;gap:4px}
+.seg button{border:0;background:transparent;border-radius:9px;padding:10px;font-weight:700;color:var(--ink2);cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(16,24,40,.12)}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:30px 16px;text-align:center;color:var(--ink2);cursor:pointer;display:grid;gap:6px;justify-items:center}
+.drop strong{color:var(--ink);font-size:1.05rem}
+.drop .ico{width:44px;height:44px;border-radius:12px;background:var(--stamp);color:var(--sig);display:grid;place-items:center;font-size:1.4rem;font-weight:800}
+.drop.over{border-color:var(--sig);background:var(--stamp)}
+.thumbs{display:flex;flex-wrap:wrap;gap:10px}
+.thumbs:empty{display:none}
+.thumbs figure{margin:0;position:relative}
+.thumbs img{height:64px;border-radius:8px;display:block;border:1px solid var(--line)}
+.thumbs button{position:absolute;top:-8px;right:-8px;width:24px;height:24px;padding:0;border-radius:50%;border:0;background:var(--ink);color:var(--paper);font-size:13px;cursor:pointer}
+.bar{height:6px;background:var(--field);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--sig);transition:width .25s}
+textarea{width:100%;background:var(--field);border:1px solid transparent;border-radius:12px;padding:12px;resize:vertical;line-height:1.55}
+textarea:focus{border-color:var(--sig);outline:0;background:var(--card)}
+
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:0;border-radius:12px;padding:12px 18px;font-weight:700;cursor:pointer;background:var(--field);color:var(--ink)}
+.btn.main{background:var(--sig);color:var(--sig-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+@media (max-width:560px){.row .btn{flex:1}}
+
+/* 가이드 칩 */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{border-radius:99px;padding:6px 14px}
-.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.chip small{opacity:.75;margin-left:4px}
-.cards{display:grid;gap:10px}
-.card{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:8px;background:var(--bg)}
-.card.off{opacity:.45}
-.strip{overflow-x:auto;border-radius:4px;border:1px solid var(--line);background:#fff}
-.strip img{display:block;width:100%;height:auto;cursor:zoom-in}.strip.zoom img{width:220%;cursor:zoom-out}
-.fields{display:grid;grid-template-columns:auto 110px minmax(120px,1fr) minmax(140px,1.2fr) minmax(150px,1fr);gap:8px;align-items:start}
-@media (max-width:700px){.fields{grid-template-columns:1fr 1fr}}
-@media (max-width:520px){.fields{grid-template-columns:auto 1fr!important;column-gap:12px}.f-pl,.f-nm,.f-ph{grid-column:1/-1}.f-on{align-content:start}body{font-size:16px}.wrap{padding:14px 12px 40px;gap:12px}section{padding:14px}h1{font-size:1.25rem}.fields{grid-template-columns:1fr}input,textarea,select{font-size:16px;padding:10px}button{padding:12px 16px;font-size:16px}.row button{flex:1}.drop{padding:28px 12px;font-size:1rem}.chip{padding:8px 14px}}
-.fields .ph input{font-family:var(--mono)}
-.phrow{display:flex;gap:6px;align-items:center}.phrow input{flex:1;min-width:0}
-.hist details{border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}.hist summary{cursor:pointer;font-weight:600}.hist textarea{width:100%;margin-top:8px}#hist{display:grid;gap:8px}.cc{font-size:.78rem;color:var(--muted);font-weight:400}
+.chip{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 16px;font-weight:700;cursor:pointer;color:var(--ink)}
+.chip small{font-weight:600;color:var(--ink2);margin-left:6px}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.chip[aria-pressed="true"] small{color:inherit;opacity:.7}
+
+/* 손님 티켓 */
+.cards{display:grid;gap:14px}
+.tk{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 1px 0 var(--line),0 6px 18px -12px rgba(16,24,40,.35);position:relative}
+.tk.check{box-shadow:inset 4px 0 0 var(--warn),0 1px 0 var(--line)}
+.tk.off{opacity:.5}
+.tk-main{display:grid;grid-template-columns:auto 1fr;gap:12px 14px;padding:16px 16px 14px}
+.stamp{grid-row:span 2;width:64px;height:64px;border:2.5px solid var(--sig);color:var(--sig);background:var(--stamp);border-radius:14px;display:grid;place-items:center;font-weight:900;font-size:1.25rem;letter-spacing:-.04em;transform:rotate(-6deg);text-align:center;line-height:1.05;padding:2px;word-break:keep-all;overflow:hidden}
+.stamp.long{font-size:.8rem}
+.tk-name{display:flex;align-items:center;gap:8px;min-width:0}
+.in{width:100%;min-width:0;background:transparent;border:0;border-radius:8px;padding:4px 6px;margin-left:-6px}
+.in:focus{background:var(--field);outline:0;box-shadow:0 0 0 2px var(--sig)}
+.in.name{font-size:1.2rem;font-weight:800;letter-spacing:-.02em}
+.tk-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;min-width:0}
+.tk-meta .in{width:auto;flex:1 1 9em;font-weight:600;color:var(--ink2)}
+.tag{font-size:.75rem;font-weight:700;border-radius:6px;padding:2px 7px;background:var(--field);color:var(--ink2);white-space:nowrap}
+.tag.auto{background:var(--stamp);color:var(--sig)}
+.tag.warn{background:var(--warnbg);color:var(--warn)}
+.gsel{appearance:none;-webkit-appearance:none;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:4px 26px 4px 12px;font-weight:700;font-size:.9rem;color:var(--ink);background-image:linear-gradient(45deg,transparent 50%,var(--ink2) 50%),linear-gradient(135deg,var(--ink2) 50%,transparent 50%);background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+.toggle{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--ink2);font-weight:600;white-space:nowrap}
+.toggle input{width:20px;height:20px;accent-color:var(--sig)}
+.tk-phone{grid-column:1/-1;display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:6px 6px 6px 12px}
+.tk-phone .cc{font-size:.8rem;font-weight:700;color:var(--ink2);white-space:nowrap}
+.tk-phone .in{font-size:1.1rem;font-weight:700;margin:0;padding:6px 4px}
+.wa{flex:none;background:var(--ok);color:#fff;font-weight:800;font-size:.9rem;text-decoration:none;border-radius:10px;padding:10px 12px;white-space:nowrap}
+.wa[hidden]{display:none}
+.perf{position:relative;border-top:2px dashed var(--line);margin:0 14px}
+.perf::before,.perf::after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper)}
+.perf::before{left:-24px}.perf::after{right:-24px}
+.evid{padding:10px 14px 14px}
+.strip{overflow-x:auto;border-radius:8px;background:#fff;cursor:zoom-in}
+.strip img{display:block;width:100%;height:auto}.strip.zoom img{width:220%}.strip.zoom{cursor:zoom-out}
+.srcText{white-space:pre-wrap;font-size:.85rem;color:var(--ink2);background:var(--field);border-radius:8px;padding:8px 10px}
+.empty{text-align:center;padding:26px 12px;color:var(--ink2);border:2px dashed var(--line);border-radius:16px}
+
+/* 결과 */
+#out{min-height:9em;font-size:.92rem}
+.hist{display:grid;gap:8px}
+.hist details{background:var(--field);border-radius:12px;padding:10px 12px}
+.hist summary{cursor:pointer;font-weight:700}
+.hist textarea{margin-top:8px;background:var(--card)}
+.cc{font-size:.8rem;color:var(--ink2);font-weight:600}
+details.fold{background:var(--card);border-radius:16px;padding:14px 16px}
+details.fold>summary{cursor:pointer;font-weight:800;font-size:1.05rem;list-style:none;display:flex;align-items:center;gap:8px}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::after{content:"";margin-left:auto;width:9px;height:9px;border-right:2px solid var(--ink2);border-bottom:2px solid var(--ink2);transform:rotate(45deg);transition:transform .2s}
+details.fold[open]>summary::after{transform:rotate(-135deg)}
+details.fold .body{display:grid;gap:12px;margin-top:12px}
+.set label{display:grid;gap:6px;font-size:.88rem;font-weight:700;color:var(--ink2)}
+.set input{background:var(--field);border:1px solid transparent;border-radius:10px;padding:11px 12px;width:100%}
+.set input:focus{border-color:var(--sig);outline:0;background:var(--card)}
+
+/* 아래 고정 바 */
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);transform:translateY(110%);transition:transform .25s}
+.dock.show{transform:none}
+.dock-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.dock-in .what{flex:1;font-weight:700;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dock-in .btn{padding:11px 16px}
+
 #ptr{position:fixed;left:0;right:0;top:0;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(-70px);transition:transform .2s}
-#ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12)}
-#ptr.ready span{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.srcText{white-space:pre-wrap;font-family:var(--mono);font-size:.82rem;background:var(--surface);border:1px dashed var(--line);border-radius:4px;padding:6px 8px;color:var(--muted)}
-.wa{display:inline-flex;align-items:center;gap:4px;flex:none;background:#25d366;color:#fff;font-weight:700;font-size:.85rem;text-decoration:none;border-radius:6px;padding:8px 10px;white-space:nowrap}.wa[hidden]{display:none}
-.hint{font-size:.78rem;color:var(--muted)}
-.flag{font-size:.78rem;color:var(--warn);font-weight:700}
-.card.check{border-color:var(--warn);background:var(--warnbg)}
-.note{font-size:.82rem;color:var(--muted);margin:0}
-.pill{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:99px;background:var(--chip);color:var(--fg)}
+#ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--card);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:700;box-shadow:0 4px 14px rgba(16,24,40,.18)}
+#ptr.ready span{background:var(--sig);color:var(--sig-ink)}
 .m-only{display:none}@media (pointer:coarse){.m-only{display:inline}.pc-only{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div id="ptr"><span id="ptrText">↓ 당겨서 새로고침</span></div>
-<div class="wrap">
-  <header>
-    <h1>픽업표 주소록 변환기</h1>
-    <p class="sub">배정표 사진을 넣으면 내 가이드 손님의 이름·번호를 주소록에 넣을 수 있게 정리해 줍니다.</p>
-  </header>
+<header class="top"><div class="top-in">
+  <div class="brand"><i></i>픽업 주소록</div>
+  <label class="datebox" for="date"><span>날짜</span><input id="date" inputmode="numeric" maxlength="6" aria-label="날짜 코드 (YYMMDD)"></label>
+  <button class="gear" id="openSet" aria-label="설정 열기" title="설정">⚙</button>
+</div></header>
 
-  <section>
-    <h2>설정</h2>
-    <div class="grid">
-      <label>날짜 코드 (YYMMDD)<input id="date" inputmode="numeric" maxlength="6"></label>
-      <label>가이드 이름 목록 (쉼표 구분)<input id="guides" value="" placeholder="예: 정지은, 김보경, 윤희진, 이미영, 고경자"></label>
-      <label>제외할 가이드 (쉼표 구분)<input id="exclude" value="" placeholder="예: 홍길동"></label>
+<main class="wrap">
+  <section class="step">
+    <div class="step-h"><b>1</b><h2>배정표 넣기</h2></div>
+    <div class="panel">
+      <div class="seg" role="tablist">
+        <button role="tab" id="tabPhoto" aria-selected="true">사진</button>
+        <button role="tab" id="tabText" aria-selected="false">카톡 글</button>
+      </div>
+      <div id="panePhoto" class="pane">
+        <div class="drop" id="drop" tabindex="0">
+          <div class="ico">+</div>
+          <strong><span class="pc-only">사진을 끌어다 놓거나 눌러서 고르기</span><span class="m-only">눌러서 사진 고르기</span></strong>
+          <span class="note">여러 장 한 번에 넣어도 됩니다<span class="pc-only"> · Ctrl+V로 붙여넣기도 됩니다</span></span>
+        </div>
+        <input type="file" id="file" accept="image/*" multiple hidden>
+      </div>
+      <div id="paneText" class="pane" hidden>
+        <textarea id="addText" rows="6" placeholder="카톡으로 받은 글을 그대로 붙여넣으세요"></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn main" id="addTextBtn">글에서 손님 추가</button></div>
+        <p class="note" style="margin-top:8px">가이드 이름, 픽업지(예: 명동9번), 손님 이름과 번호를 알아서 찾습니다.</p>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+      <div class="row"><span class="status" id="status">처음 한 번은 준비하느라 1분쯤 걸립니다. 와이파이에서 처음 열어 두면 좋습니다.</span></div>
+      <span class="status" id="addTextStatus"></span>
+      <div class="row"><button class="btn" id="run" disabled>사진 전체 다시 읽기</button></div>
     </div>
-    <label>장소 줄임말 (한 줄에 하나, 원래이름=줄임말)
-      <textarea id="abbr" rows="4">명동역9번=명9
-시청역6번=시6
-홍대3번=홍3
-합정역8번=합8</textarea>
-    </label>
-    <label>자주 쓰는 장소 (한 줄에 하나 · 장소를 고치면 자동으로 추가됩니다)
-      <textarea id="places" rows="4" placeholder="예: 알로프트명동"></textarea>
-    </label>
-    <p class="note">글자 인식이 장소를 비슷하게 잘못 읽으면(예: 알로프트명등), 이 목록과 기본 장소 목록에서 가장 가까운 이름으로 자동으로 고칩니다.</p>
-    <p class="note">가이드 이름 목록에 있는 이름만 가이드로 알아봅니다. 새 가이드가 생기면 목록에 추가하세요. "OO역 N번 / OO N번" 형태 장소는 목록에 없어도 첫 글자+번호로 줄입니다.</p>
   </section>
 
-  <section>
-    <h2>사진</h2>
-    <div class="drop" id="drop" tabindex="0"><span class="pc-only">사진을 여기로 끌어오거나, 눌러서 고르거나, Ctrl+V로 붙여넣기 (여러 장 가능)</span><span class="m-only">여기를 눌러 사진 고르기 (여러 장 가능)</span></div>
-    <input type="file" id="file" accept="image/*" multiple hidden>
-    <div class="thumbs" id="thumbs"></div>
-    <div class="row">
-      <button class="primary" id="run" disabled>추출하기</button>
-      <span class="status" id="status">처음 한 번은 준비하느라 1분쯤 걸립니다. 와이파이에서 처음 열어 두면 좋습니다.</span>
-    </div>
-    <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+  <section class="step">
+    <div class="step-h"><b>2</b><h2>가이드 고르기</h2></div>
+    <div class="chips" id="chips"><span class="note">배정표를 넣으면 가이드 이름이 여기에 나옵니다.</span></div>
   </section>
 
-  <section>
-    <h2>텍스트로 추가</h2>
-    <p class="note">카톡으로 글로 받은 추가 손님을 그대로 붙여넣고 <b>텍스트 추가</b>를 누르세요. 가이드 이름·장소(예: 명동9번)·손님 이름·번호를 알아서 찾습니다.</p>
-    <textarea id="addText" rows="6" placeholder="정지은가이드님 명동9번추가여&#10;(MR)Owen Rees 2명&#10;44-07377218695&#10;&#10;PETUKHOV ANTON 2명&#10;7-9021710116"></textarea>
-    <div class="row"><button class="primary" id="addTextBtn">텍스트 추가</button><span class="status" id="addTextStatus"></span></div>
+  <section class="step">
+    <div class="step-h"><b>3</b><h2>손님 확인</h2><span class="count" id="count">0명</span></div>
+    <p class="note">번호는 아래 원본 띠와 꼭 한 번씩 맞춰 보세요. 빨간 줄이 있는 손님은 번호를 다시 확인해야 합니다.</p>
+    <div class="cards" id="cards"><div class="empty">아직 손님이 없습니다. 1번에서 배정표 사진이나 카톡 글을 넣어 주세요.</div></div>
   </section>
 
-  <section>
-    <h2>가이드 선택</h2>
-    <div class="chips" id="chips"><span class="note">추출하면 사진에 있는 가이드가 여기에 나옵니다. 여러 명 고를 수 있습니다.</span></div>
-  </section>
-
-  <section>
-    <h2>검토 <span class="pill" id="count">0건</span></h2>
-    <p class="note"><b>사진 띠와 번호를 꼭 한 줄씩 대조하세요.</b> 글자 인식이라 숫자가 틀릴 수 있습니다. 빨간 칸은 인식이 불확실한 번호입니다. 장소를 고치면 다음부터 같은 인식 결과는 자동으로 고쳐집니다.</p>
-    <div class="cards" id="cards"></div>
-  </section>
-
-  <section>
-    <h2>결과</h2>
-    <textarea id="out" rows="10" spellcheck="false" placeholder="+491702256782, #261015머큐어 용산 Manfred Grimmeisen"></textarea>
-    <div class="row">
-      <button class="primary" id="copy">복사</button>
-      <button id="share" hidden>공유</button>
-      <button id="save">txt로 저장</button>
+  <section class="step">
+    <div class="step-h"><b>4</b><h2>주소록으로 보내기</h2></div>
+    <div class="panel">
+      <textarea id="out" rows="8" spellcheck="false" placeholder="+491702256782, #261017머큐어 용산 Manfred Grimmeisen"></textarea>
+      <div class="row">
+        <button class="btn main" id="copy">복사</button>
+        <button class="btn" id="share" hidden>공유</button>
+        <button class="btn" id="save">txt로 저장</button>
+      </div>
       <span class="status" id="outStatus"></span>
     </div>
   </section>
 
-  <section>
-    <h2>최근 결과</h2>
-    <p class="note">추출한 결과를 이 기기에 최근 10번까지 남겨 둡니다. 눌러서 펼치면 다시 복사할 수 있습니다.</p>
-    <div id="hist" class="hist"><p class="note">아직 저장된 결과가 없습니다.</p></div>
-    <div class="row"><button id="histClear" hidden>기록 모두 지우기</button></div>
-  </section>
-</div>
+  <details class="fold">
+    <summary>최근 결과</summary>
+    <div class="body">
+      <p class="note">이 기기에서 뽑은 결과를 최근 10번까지 남겨 둡니다.</p>
+      <div id="hist" class="hist"><p class="note">아직 저장된 결과가 없습니다.</p></div>
+      <div class="row"><button class="btn" id="histClear" hidden>기록 모두 지우기</button></div>
+    </div>
+  </details>
+
+  <details class="fold set" id="settings">
+    <summary>설정</summary>
+    <div class="body">
+      <label>가이드 이름 목록 (쉼표로 구분)<input id="guides" value="" placeholder="예: 정지은, 김보경, 윤희진, 이미영, 고경자"></label>
+      <label>제외할 가이드 (쉼표로 구분)<input id="exclude" value="" placeholder="예: 홍길동"></label>
+      <label>픽업지 줄임말 (한 줄에 하나, 원래이름=줄임말)
+        <textarea id="abbr" rows="4">명동역9번=명9
+시청역6번=시6
+홍대3번=홍3
+합정역8번=합8</textarea></label>
+      <label>자주 쓰는 픽업지 (고치면 자동으로 추가됩니다)
+        <textarea id="places" rows="4" placeholder="예: 알로프트명동"></textarea></label>
+      <p class="note">"OO역 N번" 형태 픽업지는 목록에 없어도 첫 글자와 번호로 줄입니다(예: 을지로입구역7번 → 을7). 글자 인식이 픽업지를 비슷하게 잘못 읽으면 자주 쓰는 픽업지 중 가장 가까운 이름으로 고칩니다.</p>
+    </div>
+  </details>
+</main>
+
+<div class="dock" id="dock"><div class="dock-in">
+  <span class="what" id="dockWhat"></span>
+  <button class="btn" id="dockShare" hidden>공유</button>
+  <button class="btn main" id="dockCopy">복사</button>
+</div></div>
 
 <script>
 // 표 사진 분석 핵심 로직 (브라우저/노드 공용)
@@ -486,7 +573,8 @@ function matchPlace(raw){
     if(!best||d<best.d){if(best)second=best.d;best={c,d};}else if(d<second)second=d;
   }
   if(best&&best.d===0)return null;
-  if(best&&best.d<=0.3&&second-best.d>=0.08)return best.c;
+  const thr=(rd&&best&&(best.c.match(/\d+/g)||[]).join(',')===rd&&/번/.test(r)&&/번/.test(best.c))?0.42:0.3;
+  if(best&&best.d<=thr&&second-best.d>=0.06)return best.c;
   // 두 줄 칸: 괄호 안 이름만으로 다시 비교
   const inner=t=>{const m=String(t).match(/\(([^)]*)\)?\s*$/);return m?jamo(m[1].replace(/[^가-힣]/g,'')):'';};
   const ri=inner(r);if(ri.length<6)return null;let b2=null,s2=Infinity;
@@ -507,34 +595,49 @@ const DEFAULT_GUIDES=['정지은','김보경','윤희진','이미영','고경자
 function guideList(){const g=list($('guides').value);return g.length?g:DEFAULT_GUIDES;}
 const CC={'1':'미국·캐나다','7':'러시아·카자흐스탄','20':'이집트','27':'남아공','30':'그리스','31':'네덜란드','32':'벨기에','33':'프랑스','34':'스페인','36':'헝가리','39':'이탈리아','40':'루마니아','41':'스위스','43':'오스트리아','44':'영국','45':'덴마크','46':'스웨덴','47':'노르웨이','48':'폴란드','49':'독일','51':'페루','52':'멕시코','53':'쿠바','54':'아르헨티나','55':'브라질','56':'칠레','57':'콜롬비아','58':'베네수엘라','60':'말레이시아','61':'호주','62':'인도네시아','63':'필리핀','64':'뉴질랜드','65':'싱가포르','66':'태국','81':'일본','82':'한국','84':'베트남','86':'중국','90':'튀르키예','91':'인도','92':'파키스탄','94':'스리랑카','95':'미얀마','98':'이란','212':'모로코','234':'나이지리아','254':'케냐','351':'포르투갈','352':'룩셈부르크','353':'아일랜드','354':'아이슬란드','356':'몰타','357':'키프로스','358':'핀란드','359':'불가리아','370':'리투아니아','371':'라트비아','372':'에스토니아','380':'우크라이나','381':'세르비아','385':'크로아티아','386':'슬로베니아','420':'체코','421':'슬로바키아','502':'과테말라','506':'코스타리카','507':'파나마','593':'에콰도르','598':'우루과이','852':'홍콩','853':'마카오','855':'캄보디아','856':'라오스','880':'방글라데시','886':'대만','960':'몰디브','961':'레바논','962':'요르단','965':'쿠웨이트','966':'사우디','971':'UAE','972':'이스라엘','974':'카타르','977':'네팔','998':'우즈베키스탄'};
 function country(d){d=digits(d);if(!okLen(d))return '';for(const n of [3,2,1]){const c=CC[d.slice(0,n)];if(c){let t=c;if(d[0]==='1'&&d.length!==11)t+=' · 자릿수 확인';return t;}}return '국가번호 확인';}
+function stampText(p){const t=shortPlace(p)||'?';return t;}
 function render(){
   const box=$('cards');box.innerHTML='';
   const gl=guideList();
-  if(!rows.length){box.innerHTML='<p class="note">선택한 가이드의 행이 없습니다.</p>';}
+  if(!rows.length){box.innerHTML='<div class="empty">'+(allRows.length?'고른 가이드의 손님이 없습니다. 2번에서 가이드를 골라 주세요.':'아직 손님이 없습니다. 1번에서 배정표 사진이나 카톡 글을 넣어 주세요.')+'</div>';}
   rows.forEach((r,i)=>{
-    const c=document.createElement('div');c.className='card'+(r.on?'':' off')+(r.phoneSure?'':' check');
-    c.innerHTML=`${r.img?`<div class="strip" onclick="this.classList.toggle('zoom')" title="눌러서 크게/작게"><img src="${r.img}" alt="원본 사진 ${i+1}번째 줄"></div>`:`<div class="srcText">✎ 텍스트로 추가\n${esc(r.srcText||'')}</div>`}
-      <div class="fields">
-        <label class="f-on"><span>포함</span><input type="checkbox" id="on${i}" ${r.on?'checked':''}></label>
-        <label class="f-g">가이드${r.guideGuess?' <span class="flag">추정</span>':''}<select id="g${i}">${[...new Set([r.guide,...gl])].filter(Boolean).map(g=>`<option ${g===r.guide?'selected':''}>${esc(g)}</option>`).join('')}<option value="" ${r.guide?'':'selected'}>(모름)</option></select></label>
-        <label class="f-pl"><span>장소${r.auto?' <span class="hint">(자동 보정)</span>':''}</span> <span class="hint" id="sp${i}">→ ${esc(shortPlace(r.place))}</span><input id="pl${i}" value="${esc(r.place)}"></label>
-        <label class="f-nm">고객명<input id="nm${i}" value="${esc(r.name)}"></label>
-        <label class="ph f-ph"><span>연락처 <span class="cc" id="cc${i}">${esc(country(r.phone))}</span> ${r.phoneSure?'':'<span class="flag">확인 필요</span>'}</span><span class="phrow"><input id="ph${i}" value="${esc(r.phone)}" inputmode="numeric"><a class="wa" id="wa${i}" target="_blank" rel="noopener" href="https://wa.me/${digits(r.phone)}" ${okLen(digits(r.phone))?'':'hidden'}>WhatsApp</a></span></label>
-      </div>`;
+    const c=document.createElement('article');c.className='tk'+(r.on?'':' off')+(r.phoneSure?'':' check');
+    const st=stampText(r.place);
+    c.innerHTML=`<div class="tk-main">
+        <div class="stamp${st.length>4?' long':''}" id="sp${i}" aria-label="픽업지 줄임말">${esc(st)}</div>
+        <div class="tk-name"><input class="in name" id="nm${i}" value="${esc(r.name)}" aria-label="손님 이름" placeholder="이름">
+          <label class="toggle"><input type="checkbox" id="on${i}" ${r.on?'checked':''}>포함</label></div>
+        <div class="tk-meta">
+          <input class="in" id="pl${i}" value="${esc(r.place)}" aria-label="픽업지" placeholder="픽업지">
+          ${r.auto?'<span class="tag auto">자동 보정</span>':''}
+          <select class="gsel" id="g${i}" aria-label="가이드">${[...new Set([r.guide,...gl])].filter(Boolean).map(g=>`<option ${g===r.guide?'selected':''}>${esc(g)}</option>`).join('')}<option value="" ${r.guide?'':'selected'}>가이드 모름</option></select>
+          ${r.guideGuess?'<span class="tag">가이드 추정</span>':''}
+        </div>
+        <div class="tk-phone">
+          <span class="cc" id="cc${i}">${esc(country(r.phone)||'번호 없음')}</span>
+          <input class="in" id="ph${i}" value="${esc(r.phone)}" inputmode="numeric" aria-label="전화번호">
+          ${r.phoneSure?'':'<span class="tag warn" id="fl'+i+'">확인</span>'}
+          <a class="wa" id="wa${i}" target="_blank" rel="noopener" href="https://wa.me/${digits(r.phone)}" ${okLen(digits(r.phone))?'':'hidden'}>WhatsApp</a>
+        </div>
+      </div>
+      <div class="perf" aria-hidden="true"></div>
+      <div class="evid">${r.img?`<div class="strip" onclick="this.classList.toggle('zoom')" title="눌러서 크게 보기"><img src="${r.img}" alt="원본 배정표 ${i+1}번째 줄"></div>`:`<div class="srcText">카톡 글에서 추가\n${esc(r.srcText||'')}</div>`}</div>`;
     box.append(c);
     c.querySelector('#on'+i).onchange=e=>{r.on=e.target.checked;c.classList.toggle('off',!r.on);makeOut();};
     c.querySelector('#g'+i).onchange=e=>{r.guide=e.target.value;r.guideGuess=false;drawChips();makeOut();};
-    c.querySelector('#pl'+i).oninput=e=>{r.place=e.target.value;$('sp'+i).textContent='→ '+shortPlace(r.place);if(r.raw)fixes[r.raw]=r.place;saveCfg();makeOut();};
+    c.querySelector('#pl'+i).oninput=e=>{r.place=e.target.value;const t=stampText(r.place);const sp=$('sp'+i);sp.textContent=t;sp.classList.toggle('long',t.length>4);if(r.raw)fixes[r.raw]=r.place;saveCfg();makeOut();};
     c.querySelector('#pl'+i).onchange=e=>learnPlace(e.target.value);
     c.querySelector('#nm'+i).oninput=e=>{r.name=e.target.value;makeOut();};
-    c.querySelector('#ph'+i).oninput=e=>{r.phone=digits(e.target.value);r.phoneSure=true;c.classList.remove('check');const w=$('wa'+i);w.href='https://wa.me/'+r.phone;w.hidden=!okLen(r.phone);$('cc'+i).textContent=country(r.phone);makeOut();};
+    c.querySelector('#ph'+i).oninput=e=>{r.phone=digits(e.target.value);r.phoneSure=true;c.classList.remove('check');const f=$('fl'+i);if(f)f.remove();const w=$('wa'+i);w.href='https://wa.me/'+r.phone;w.hidden=!okLen(r.phone);$('cc'+i).textContent=country(r.phone)||'번호 없음';makeOut();};
   });
   makeOut();
 }
 function makeOut(){clearTimeout(histT);if(allRows.length)histT=setTimeout(saveHistory,1500);
   const on=rows.filter(r=>r.on);
   $('out').value=on.filter(r=>okLen(digits(r.phone))).map(r=>'+'+digits(r.phone)+', #'+$('date').value.trim()+shortPlace(r.place)+' '+String(r.name).trim()).join('\n');
-  $('count').textContent=on.length+'건';
+  $('count').textContent=on.length+'명';
+  const ready=$('out').value?$('out').value.split('\n').length:0;const gs=[...new Set(on.map(r=>r.guide).filter(Boolean))];
+  $('dock').classList.toggle('show',ready>0);$('dockWhat').textContent=(gs.join(', ')||'손님')+' '+ready+'명';
   const skip=on.filter(r=>!okLen(digits(r.phone))).map(r=>r.name||'(이름 없음)');
   $('outStatus').textContent=skip.length?'번호 없어서 뺀 사람: '+skip.join(', '):'';
 }
@@ -551,7 +654,7 @@ function saveHistory(){const t=$('out').value.trim();if(!t)return;const h=loadHi
 function drawHist(){const h=loadHist(),box=$('hist');$('histClear').hidden=!h.length;
   if(!h.length){box.innerHTML='<p class="note">아직 저장된 결과가 없습니다.</p>';return;}
   box.innerHTML='';h.forEach((x,i)=>{const d=new Date(x.at),ts=(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-    const el=document.createElement('details');el.innerHTML=`<summary>#${esc(x.date)} · ${esc(x.guides||'가이드 없음')} · ${x.n}명 <span class="cc">(${ts} 저장)</span></summary><textarea id="h${i}" rows="6" readonly>${esc(x.text)}</textarea><div class="row"><button id="hc${i}">복사</button></div>`;
+    const el=document.createElement('details');el.innerHTML=`<summary>#${esc(x.date)} · ${esc(x.guides||'가이드 없음')} · ${x.n}명 <span class="cc">(${ts} 저장)</span></summary><textarea id="h${i}" rows="6" readonly>${esc(x.text)}</textarea><div class="row" style="margin-top:8px"><button class="btn" id="hc${i}">복사</button></div>`;
     box.append(el);el.querySelector('#hc'+i).onclick=async()=>{const ta=$('h'+i);try{await navigator.clipboard.writeText(ta.value);}catch(e){ta.select();document.execCommand&&document.execCommand('copy');}$('hc'+i).textContent='복사했습니다';};});}
 $('histClear').onclick=()=>{if($('histClear').dataset.sure){try{localStorage.removeItem(HKEY);}catch(e){}delete $('histClear').dataset.sure;$('histClear').textContent='기록 모두 지우기';drawHist();}else{$('histClear').dataset.sure=1;$('histClear').textContent='한 번 더 누르면 지웁니다';}};
 $('out').addEventListener('input',()=>{clearTimeout(histT);histT=setTimeout(saveHistory,1500);});
@@ -587,6 +690,11 @@ $('addTextBtn').onclick=()=>{
   $('addTextStatus').textContent=`${es.length}명 추가했습니다${merged?` (겹친 ${merged}명 합침)`:''}. 아래 검토에서 확인하세요.`;
   $('addText').value='';
 };
+function setTab(t){const ph=t==='photo';$('tabPhoto').setAttribute('aria-selected',ph);$('tabText').setAttribute('aria-selected',!ph);$('panePhoto').hidden=!ph;$('paneText').hidden=ph;}
+$('tabPhoto').onclick=()=>setTab('photo');$('tabText').onclick=()=>setTab('text');
+$('openSet').onclick=()=>{const d=$('settings');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});};
+$('dockCopy').onclick=()=>$('copy').click();$('dockShare').onclick=()=>$('share').click();
+if(navigator.share){$('share').hidden=false;$('dockShare').hidden=false;}
 if(navigator.share)$('share').hidden=false;
 /* 홈 화면 앱에서 당겨서 새로고침 */
 (()=>{const standalone=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;if(!standalone)return;
