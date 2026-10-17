@@ -88,10 +88,12 @@ textarea:focus{border-color:var(--sig);outline:0;background:var(--card)}
 .tk-main{display:grid;grid-template-columns:auto 1fr;gap:12px 14px;padding:16px 16px 14px}
 .stamp{grid-row:span 2;width:64px;height:64px;border:2.5px solid var(--sig);color:var(--sig);background:var(--stamp);border-radius:14px;display:grid;place-items:center;font-weight:900;font-size:1.25rem;letter-spacing:-.04em;transform:rotate(-6deg);text-align:center;line-height:1.05;padding:2px;word-break:keep-all;overflow:hidden}
 .stamp.long{font-size:.8rem}
-.tk-name{display:flex;align-items:center;gap:8px;min-width:0}
+.tk-name{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.tk-name .toggle{margin-top:6px}
 .in{width:100%;min-width:0;background:transparent;border:0;border-radius:8px;padding:4px 6px;margin-left:-6px}
 .in:focus{background:var(--field);outline:0;box-shadow:0 0 0 2px var(--sig)}
-.in.name{font-size:1.2rem;font-weight:800;letter-spacing:-.02em}
+.in.name{font-size:1.2rem;font-weight:800;letter-spacing:-.02em;line-height:1.25;resize:none;overflow:hidden;background:transparent;border:0;padding:4px 6px;min-height:0;word-break:break-word}
+.in.name:focus{background:var(--field)}
 .tk-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;min-width:0}
 .tk-meta .in{width:auto;flex:1 1 9em;font-weight:600;color:var(--ink2)}
 .tag{font-size:.75rem;font-weight:700;border-radius:6px;padding:2px 7px;background:var(--field);color:var(--ink2);white-space:nowrap}
@@ -133,7 +135,7 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 .set input:focus{border-color:var(--sig);outline:0;background:var(--card)}
 
 /* 아래 고정 바 */
-.dock{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);transform:translateY(110%);transition:transform .25s}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:var(--card);background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);transform:translateY(110%);transition:transform .25s}
 .dock.show{transform:none}
 .dock-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:10px}
 .dock-in .what{flex:1;font-weight:700;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -621,7 +623,7 @@ function render(){
     const st=stampText(r.place);
     c.innerHTML=`<div class="tk-main">
         <div class="stamp${st.length>4?' long':''}" id="sp${i}" aria-label="픽업지 줄임말">${esc(st)}</div>
-        <div class="tk-name"><input class="in name" id="nm${i}" value="${esc(r.name)}" aria-label="손님 이름" placeholder="이름">
+        <div class="tk-name"><textarea class="in name" id="nm${i}" rows="1" aria-label="손님 이름" placeholder="이름">${esc(r.name)}</textarea>
           <label class="toggle"><input type="checkbox" id="on${i}" ${r.on?'checked':''} aria-label="결과에 포함"><span class="tl">포함</span></label></div>
         <div class="tk-meta">
           <input class="in" id="pl${i}" value="${esc(r.place)}" aria-label="픽업지" placeholder="픽업지">
@@ -641,7 +643,8 @@ function render(){
     c.querySelector('#g'+i).onchange=e=>{r.guide=e.target.value;r.guideGuess=false;drawChips();makeOut();};
     c.querySelector('#pl'+i).oninput=e=>{r.place=e.target.value;const t=stampText(r.place);const sp=$('sp'+i);sp.textContent=t;sp.classList.toggle('long',t.length>4);if(r.raw)fixes[r.raw]=r.place;saveCfg();makeOut();};
     c.querySelector('#pl'+i).onchange=e=>learnPlace(e.target.value);
-    c.querySelector('#nm'+i).oninput=e=>{r.name=e.target.value;makeOut();};
+    const nm=c.querySelector('#nm'+i);const fit=()=>{nm.style.height='auto';nm.style.height=nm.scrollHeight+'px';};requestAnimationFrame(fit);
+    nm.oninput=e=>{r.name=e.target.value.replace(/\n/g,' ');if(/\n/.test(e.target.value))e.target.value=r.name;fit();makeOut();};
     c.querySelector('#ph'+i).oninput=e=>{r.phone=digits(e.target.value);r.phoneSure=true;c.classList.remove('check');const f=$('fl'+i);if(f)f.remove();const w=$('wa'+i);w.href='https://wa.me/'+r.phone;w.hidden=!okLen(r.phone);$('cc'+i).textContent=country(r.phone)||'번호 없음';makeOut();};
   });
   makeOut();
