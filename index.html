@@ -150,6 +150,8 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 .linkbtn{border:0;background:none;padding:0;font-weight:800;color:var(--sig);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .nclose{flex:none;border:0;background:transparent;color:var(--ink2);font-size:1rem;width:32px;height:32px;border-radius:50%;cursor:pointer}
 @media (max-width:400px){.toggle .tl{display:none}.in.name{font-size:1.08rem}.stamp{width:56px;height:56px;font-size:1.1rem}}
+/* 아이폰은 16px보다 작은 입력칸을 누르면 화면을 확대하므로 모든 입력칸을 16px 이상으로 */
+.set input,.set textarea,textarea,select,.gsel,#out{font-size:16px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -707,7 +709,7 @@ $('tabPhoto').onclick=()=>setTab('photo');$('tabText').onclick=()=>setTab('text'
 try{if(localStorage.getItem('pickupNoticeOff')==='1')$('notice').hidden=true;}catch(e){}
 $('noticeClose').onclick=()=>{$('notice').hidden=true;try{localStorage.setItem('pickupNoticeOff','1');}catch(e){}};
 $('noticeSet').onclick=()=>$('openSet').click();
-$('setDone').onclick=()=>{saveCfg();if(allRows.length)applyFilter();$('settings').open=false;window.scrollTo({top:0,behavior:'smooth'});};
+$('setDone').onclick=()=>{if(document.activeElement)document.activeElement.blur();saveCfg();if(allRows.length)applyFilter();$('settings').open=false;window.scrollTo({top:0,behavior:'smooth'});};
 $('openSet').onclick=()=>{const d=$('settings');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});};
 $('dockCopy').onclick=()=>$('copy').click();$('dockShare').onclick=()=>$('share').click();
 if(navigator.share){$('share').hidden=false;$('dockShare').hidden=false;}
