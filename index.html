@@ -143,6 +143,12 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 #ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--card);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:700;box-shadow:0 4px 14px rgba(16,24,40,.18)}
 #ptr.ready span{background:var(--sig);color:var(--sig-ink)}
 .m-only{display:none}@media (pointer:coarse){.m-only{display:inline}.pc-only{display:none}}
+.notice{display:flex;align-items:center;gap:10px;background:var(--stamp);color:var(--ink);border:1.5px solid var(--sig);border-radius:14px;padding:12px 12px 12px 14px}
+.notice[hidden]{display:none}
+.notice p{margin:0;flex:1;font-size:.92rem;font-weight:600;line-height:1.45}
+.nicon{flex:none;width:30px;height:30px;border-radius:50%;background:var(--sig);color:var(--sig-ink);display:grid;place-items:center;font-size:1rem}
+.linkbtn{border:0;background:none;padding:0;font-weight:800;color:var(--sig);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.nclose{flex:none;border:0;background:transparent;color:var(--ink2);font-size:1rem;width:32px;height:32px;border-radius:50%;cursor:pointer}
 @media (max-width:400px){.toggle .tl{display:none}.in.name{font-size:1.08rem}.stamp{width:56px;height:56px;font-size:1.1rem}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -156,6 +162,11 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 </div></header>
 
 <main class="wrap">
+  <div class="notice" id="notice" role="note">
+    <span class="nicon" aria-hidden="true">⚙</span>
+    <p>가이드 이름이나 픽업지 줄임말을 바꾸려면 맨 위 <button class="linkbtn" id="noticeSet">톱니바퀴</button>를 누르세요.</p>
+    <button class="nclose" id="noticeClose" aria-label="안내 닫기">✕</button>
+  </div>
   <section class="step">
     <div class="step-h"><b>1</b><h2>배정표 넣기</h2></div>
     <div class="panel">
@@ -692,6 +703,9 @@ $('addTextBtn').onclick=()=>{
 };
 function setTab(t){const ph=t==='photo';$('tabPhoto').setAttribute('aria-selected',ph);$('tabText').setAttribute('aria-selected',!ph);$('panePhoto').hidden=!ph;$('paneText').hidden=ph;}
 $('tabPhoto').onclick=()=>setTab('photo');$('tabText').onclick=()=>setTab('text');
+try{if(localStorage.getItem('pickupNoticeOff')==='1')$('notice').hidden=true;}catch(e){}
+$('noticeClose').onclick=()=>{$('notice').hidden=true;try{localStorage.setItem('pickupNoticeOff','1');}catch(e){}};
+$('noticeSet').onclick=()=>$('openSet').click();
 $('openSet').onclick=()=>{const d=$('settings');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});};
 $('dockCopy').onclick=()=>$('copy').click();$('dockShare').onclick=()=>$('share').click();
 if(navigator.share){$('share').hidden=false;$('dockShare').hidden=false;}
