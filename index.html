@@ -100,10 +100,11 @@ textarea:focus{border-color:var(--sig);outline:0;background:var(--card)}
 .gsel{appearance:none;-webkit-appearance:none;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:4px 26px 4px 12px;font-weight:700;font-size:.9rem;color:var(--ink);background-image:linear-gradient(45deg,transparent 50%,var(--ink2) 50%),linear-gradient(135deg,var(--ink2) 50%,transparent 50%);background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%;background-size:5px 5px;background-repeat:no-repeat}
 .toggle{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--ink2);font-weight:600;white-space:nowrap}
 .toggle input{width:20px;height:20px;accent-color:var(--sig)}
-.tk-phone{grid-column:1/-1;display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:6px 6px 6px 12px}
+.tk-phone{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:4px 10px;background:var(--field);border-radius:12px;padding:8px 8px 8px 12px}
+.ph-top{grid-column:1/-1;display:flex;align-items:center;gap:8px;min-height:20px}
 .tk-phone .cc{font-size:.8rem;font-weight:700;color:var(--ink2);white-space:nowrap}
-.tk-phone .in{font-size:1.1rem;font-weight:700;margin:0;padding:6px 4px}
-.wa{flex:none;background:var(--ok);color:#fff;font-weight:800;font-size:.9rem;text-decoration:none;border-radius:10px;padding:10px 12px;white-space:nowrap}
+.tk-phone .in{font-size:1.25rem;font-weight:800;letter-spacing:.01em;margin:0;padding:4px 2px}
+.wa{margin-left:auto;flex:none;background:var(--ok);color:#fff;font-weight:800;font-size:.85rem;text-decoration:none;border-radius:999px;padding:6px 12px;white-space:nowrap}
 .wa[hidden]{display:none}
 .perf{position:relative;border-top:2px dashed var(--line);margin:0 14px}
 .perf::before,.perf::after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper)}
@@ -142,6 +143,7 @@ details.fold .body{display:grid;gap:12px;margin-top:12px}
 #ptr span{margin-top:calc(env(safe-area-inset-top,0px) + 10px);background:var(--card);border-radius:99px;padding:8px 16px;font-size:.9rem;font-weight:700;box-shadow:0 4px 14px rgba(16,24,40,.18)}
 #ptr.ready span{background:var(--sig);color:var(--sig-ink)}
 .m-only{display:none}@media (pointer:coarse){.m-only{display:inline}.pc-only{display:none}}
+@media (max-width:400px){.toggle .tl{display:none}.in.name{font-size:1.08rem}.stamp{width:56px;height:56px;font-size:1.1rem}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -606,7 +608,7 @@ function render(){
     c.innerHTML=`<div class="tk-main">
         <div class="stamp${st.length>4?' long':''}" id="sp${i}" aria-label="픽업지 줄임말">${esc(st)}</div>
         <div class="tk-name"><input class="in name" id="nm${i}" value="${esc(r.name)}" aria-label="손님 이름" placeholder="이름">
-          <label class="toggle"><input type="checkbox" id="on${i}" ${r.on?'checked':''}>포함</label></div>
+          <label class="toggle"><input type="checkbox" id="on${i}" ${r.on?'checked':''} aria-label="결과에 포함"><span class="tl">포함</span></label></div>
         <div class="tk-meta">
           <input class="in" id="pl${i}" value="${esc(r.place)}" aria-label="픽업지" placeholder="픽업지">
           ${r.auto?'<span class="tag auto">자동 보정</span>':''}
@@ -614,10 +616,8 @@ function render(){
           ${r.guideGuess?'<span class="tag">가이드 추정</span>':''}
         </div>
         <div class="tk-phone">
-          <span class="cc" id="cc${i}">${esc(country(r.phone)||'번호 없음')}</span>
+          <div class="ph-top"><span class="cc" id="cc${i}">${esc(country(r.phone)||'번호 없음')}</span>${r.phoneSure?'':'<span class="tag warn" id="fl'+i+'">번호 확인</span>'}<a class="wa" id="wa${i}" target="_blank" rel="noopener" href="https://wa.me/${digits(r.phone)}" ${okLen(digits(r.phone))?'':'hidden'}>WhatsApp</a></div>
           <input class="in" id="ph${i}" value="${esc(r.phone)}" inputmode="numeric" aria-label="전화번호">
-          ${r.phoneSure?'':'<span class="tag warn" id="fl'+i+'">확인</span>'}
-          <a class="wa" id="wa${i}" target="_blank" rel="noopener" href="https://wa.me/${digits(r.phone)}" ${okLen(digits(r.phone))?'':'hidden'}>WhatsApp</a>
         </div>
       </div>
       <div class="perf" aria-hidden="true"></div>
